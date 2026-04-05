@@ -1,0 +1,30 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data & Models (Ignore contents but preserve directories)
+data/*
+ml-pipeline/models/*
+
+# Preserve .gitkeep
+!data/**/.gitkeep
+!ml-pipeline/models/.gitkeep
+
+# GraphHopper & Java
+backend-demo/graph-cache/
+backend-demo/target/
+backend-demo/build/
+.gradle/
+*.class
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# AI
+.gemini/
