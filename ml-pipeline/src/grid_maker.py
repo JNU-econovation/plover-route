@@ -24,8 +24,8 @@ def generate_grid(region: str, grid_size: int, buffer_size: int, force_download:
     BASE_CRS = config['spatial']['base_crs']
     PROJ_CRS = config['spatial']['projected_crs']
     
-    raw_dir = project_root / 'data' / 'raw'
-    processed_dir = project_root / 'data' / 'processed'
+    raw_dir = (project_root / config['data']['paths']['raw']).resolve()
+    processed_dir = (project_root / config['data']['paths']['processed']).resolve()
     
     # 폴더 안전장치
     raw_dir.mkdir(parents=True, exist_ok=True)

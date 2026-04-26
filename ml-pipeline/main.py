@@ -14,8 +14,8 @@ def main():
                              help="타겟 지역명 (설정하지 않으면 config.yaml의 값을 따릅니다.)")
     grid_parser.add_argument("--grid-size", type=int, default=None,
                              help="격자 1칸의 크기(m) (설정하지 않으면 config.yaml 값을 따릅니다.)")
-    grid_parser.add_argument("--buffer", type=int, default=30,
-                             help="도로 중심선(엣지) 기준 마스킹 확장 버퍼 반경(m) (기본값: 30m)")
+    grid_parser.add_argument("--buffer", type=int, default=10,
+                             help="도로 중심선(엣지) 기준 마스킹 확장 버퍼 반경(m) (기본값: 10m)")
     grid_parser.add_argument("--force-download", action="store_true",
                              help="기존 로컬 캐시 데이터(.graphml)를 무시하고 OSM API로 서버에서 재다운로드합니다.")
     
