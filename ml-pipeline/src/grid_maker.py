@@ -36,7 +36,7 @@ def generate_grid(region: str, grid_size: int, buffer_size: int, force_download:
     # 2. OSM 데이터 가져오기 및 캐싱
     # 파일명을 위해 불필요한 특수문자 제거 후 변환
     safe_region_name = region.lower().replace(" ", "_").replace(",", "")
-    graphml_path = raw_dir / f"{safe_region_name}_walk_network.graphml"
+    graphml_path = raw_dir / f"network_{safe_region_name}_raw.graphml"
     
     t0 = time.time()
     if graphml_path.exists() and not force_download:
@@ -90,7 +90,7 @@ def generate_grid(region: str, grid_size: int, buffer_size: int, force_download:
     print(f"✅ 마스킹 최적화 처리 성공! (실제 쓰일 데이터셋 크기: {len(grid_masked)} 개)")
     
     # 6. GeoPackage 포맷으로 내보내기 (Rule 4 준수)
-    output_filename = f"{safe_region_name}_{grid_size}m_grid_buf{buffer_size}m.gpkg"
+    output_filename = f"grid_{safe_region_name}_{grid_size}m_buf{buffer_size}m.gpkg"
     output_path = processed_dir / output_filename
     grid_masked.to_file(output_path, driver='GPKG', layer=f'grid_{grid_size}m')
     print(f"🚀 [완료] 파이프라인 중간 결과물 저장됨 -> {output_path}")
