@@ -1,0 +1,5 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/ml-pipeline/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "jupyter.jupyterServerType": "local"
+}
