@@ -48,7 +48,7 @@ def generate_grid(region: str, grid_size: int, buffer_size: int, force_download:
         graph = ox.graph_from_place(region, network_type="walk")
         # Rule 4: 원본 API 데이터 백업/캐싱
         ox.save_graphml(graph, graphml_path)
-        print(f"💾 원본 그래프 캐싱 완료: {graphml_path.name}")
+        print(f"💾 OSM 다운로드 성공! 원본 그래프 파일 저장(캐싱) 완료: {graphml_path.name}")
         
     # 선형 에지(도로)만 추출 (nodes는 사용 안 함)
     nodes, edges = ox.graph_to_gdfs(graph)
