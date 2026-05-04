@@ -51,12 +51,12 @@ def main():
         parser.print_help()
         sys.exit(1)
         
+    # config.yaml 로드 (공통)
+    config_path = Path(__file__).parent / 'config.yaml'
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+        
     if args.command == "add-grid":
-        # config.yaml에서 기본값 가져오기
-        config_path = Path(__file__).parent / 'config.yaml'
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-            
         region = args.region if args.region else config['spatial']['target_region']
         grid_size = args.grid_size if args.grid_size else config['spatial']['grid_size_meters']
         buffer_size = args.buffer if args.buffer is not None else config['spatial']['buffer_size_meters']
@@ -70,11 +70,6 @@ def main():
         )
         
     elif args.command == "add-features":
-        # config.yaml에서 기본값 가져오기
-        config_path = Path(__file__).parent / 'config.yaml'
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-            
         region = args.region if args.region else config['spatial']['target_region']
         grid_size = args.grid_size if args.grid_size else config['spatial']['grid_size_meters']
         buffer_size = args.buffer if args.buffer is not None else config['spatial']['buffer_size_meters']
@@ -88,11 +83,6 @@ def main():
         orchestrator.run(feature_type=feature_type)
 
     elif args.command == "make-dataset":
-        # config.yaml에서 기본값 가져오기
-        config_path = Path(__file__).parent / 'config.yaml'
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-            
         region = args.region if args.region else config['spatial']['target_region']
         grid_size = args.grid_size if args.grid_size else config['spatial']['grid_size_meters']
         buffer_size = args.buffer if args.buffer is not None else config['spatial']['buffer_size_meters']
