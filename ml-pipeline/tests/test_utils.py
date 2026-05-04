@@ -17,7 +17,8 @@ def test_ensure_crs():
         ensure_crs(gdf_no_crs, "EPSG:5179")
         
     # 2. 이기종 CRS 강제 변환 확인
-    gdf_4326 = gpd.GeoDataFrame(geometry=[Point(126.9, 37.5)], crs="EPSG:4326")
+    # (주의: pyproj의 numpy 스칼라 경고를 피하기 위해 Point를 2개 이상 넣습니다)
+    gdf_4326 = gpd.GeoDataFrame(geometry=[Point(126.9, 37.5), Point(126.91, 37.51)], crs="EPSG:4326")
     gdf_5179 = ensure_crs(gdf_4326, "EPSG:5179")
     assert gdf_5179.crs.to_string() == "EPSG:5179"
     
