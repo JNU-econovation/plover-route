@@ -3,8 +3,6 @@ import sys
 from src.grid_maker import generate_grid
 from src.feature_engineering import FeatureOrchestrator
 from src.dataset_builder import DatasetBuilder
-import yaml
-from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description="GeoAI Plogging ML Pipeline Orchestrator (CLI)")
@@ -51,10 +49,9 @@ def main():
         parser.print_help()
         sys.exit(1)
         
-    # config.yaml 로드 (공통)
-    config_path = Path(__file__).parent / 'config.yaml'
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
+    # config.yaml 로드 (공통 유틸리티 사용)
+    from src.utils import load_config
+    config = load_config()
         
     if args.command == "add-grid":
         region = args.region if args.region else config['spatial']['target_region']

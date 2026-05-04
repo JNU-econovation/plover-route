@@ -6,7 +6,7 @@ from typing import Tuple
 
 def get_safe_region_name(region: str) -> str:
     """지역명(Region)을 파일 시스템에서 안전하게 사용할 수 있는 이름으로 변환합니다."""
-    return region.lower().replace(" ", "_").replace(",", "")
+    return "_".join(region.lower().replace(",", "").split())
 
 def load_config() -> dict:
     """프로젝트 루트를 찾아 config.yaml을 로드합니다."""
@@ -39,7 +39,7 @@ def ensure_crs(gdf: gpd.GeoDataFrame, target_crs: str) -> gpd.GeoDataFrame:
     """[Rule 1, Rule 5 준수] 현재 CRS를 확인하고 다르면 타겟 CRS로 변환합니다."""
     if gdf.crs is None:
         raise ValueError("🚨 데이터 프레임에 CRS 정보가 없습니다.")
-    if gdf.crs != target_crs:
+    if not gdf.crs.equals(target_crs):
         print(f"🔄 CRS 변환 중: {gdf.crs} -> {target_crs}")
         return gdf.to_crs(target_crs)
     return gdf

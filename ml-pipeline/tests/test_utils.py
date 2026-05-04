@@ -7,7 +7,7 @@ def test_get_safe_region_name():
     """지역명 변환 유틸리티가 공백, 쉼표, 대문자를 올바르게 처리하는지 검증합니다."""
     assert get_safe_region_name("Dong-gu, Gwangju") == "dong-gu_gwangju"
     assert get_safe_region_name("Seoul, South Korea") == "seoul_south_korea"
-    assert get_safe_region_name("   TEST,  ") == "___test__"
+    assert get_safe_region_name("   TEST,  ") == "test"
 
 def test_ensure_crs():
     """[Rule 1] CRS 강제 변환 안전장치가 제대로 작동하는지 검증합니다."""
