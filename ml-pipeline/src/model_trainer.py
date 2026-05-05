@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 import logging
 
 # 앞서 작성한 핵심 모듈들을 불러옵니다.
-from models.pu_xgboost import PUBaggingXGBoost
-from evaluator import evaluate_pu_model
+from src.models.pu_xgboost import PUBaggingXGBoost
+from src.evaluator import evaluate_pu_model
 
 logger = logging.getLogger(__name__)
 

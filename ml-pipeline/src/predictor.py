@@ -5,7 +5,7 @@ import joblib
 from pathlib import Path
 import logging
 
-from models.pu_xgboost import PUBaggingXGBoost
+from src.models.pu_xgboost import PUBaggingXGBoost
 
 logger = logging.getLogger(__name__)
 
