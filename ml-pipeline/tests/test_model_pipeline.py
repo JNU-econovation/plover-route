@@ -13,7 +13,7 @@ def mock_geodataframe():
         'grid_id': [1, 2, 3],
         'cafe_count': [10, 0, 5],
         'dist_to_road': [100.5, 20.0, 50.1],
-        'is_hotspot': [1, 0, 0],
+        'is_trash': [1, 0, 0],
         'index_right': [99, 88, 77] # 공간 조인 시 딸려오는 불필요한 찌꺼기 컬럼
     }
     geometry = [Point(0,0), Point(1,1), Point(2,2)]
@@ -28,7 +28,7 @@ def test_model_trainer_ocp_feature_extraction(mock_geodataframe):
     # 1. 정답지 분리 확인
     assert list(y.values) == [1, 0, 0]
     
-    # 2. Exclude List 동작 확인 (is_hotspot, geometry, grid_id, index_right 등 시스템 컬럼 제외)
+    # 2. Exclude List 동작 확인 (is_trash, geometry, grid_id, index_right 등 시스템 컬럼 제외)
     # 남은 피처는 무조건 'cafe_count'와 'dist_to_road' 2개 뿐이어야 함
     expected_features = ['cafe_count', 'dist_to_road']
     assert list(X.columns) == expected_features

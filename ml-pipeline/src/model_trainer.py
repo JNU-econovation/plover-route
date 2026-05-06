@@ -35,10 +35,10 @@ class ModelTrainer:
         # [클린 코드 - 개선안] OCP 진정한 준수: 특정 문자열(_count_)에 의존하지 않습니다.
         # 인구수 밀도, 도로까지의 거리 등 다양한 피처가 추가될 것을 대비하여, 
         # '머신러닝에 쓰면 안 되는 컬럼(정답지, 공간좌표, ID 등)'만 리스트로 만들어 제외(Exclude)시킵니다.
-        exclude_cols = ['is_hotspot', 'geometry', 'grid_id', 'index_right']
+        exclude_cols = ['is_trash', 'geometry', 'grid_id', 'index_right']
         
-        if 'is_hotspot' not in gdf.columns:
-            raise ValueError("데이터셋에 정답지인 'is_hotspot' 컬럼이 존재하지 않습니다.")
+        if 'is_trash' not in gdf.columns:
+            raise ValueError("데이터셋에 정답지인 'is_trash' 컬럼이 존재하지 않습니다.")
 
         # 제외 리스트에 없는 모든 컬럼을 피처(X)로 사용합니다.
         feature_cols = [col for col in gdf.columns if col not in exclude_cols]
@@ -47,7 +47,7 @@ class ModelTrainer:
             raise ValueError(f"학습에 사용할 피처(독립변수)가 데이터셋에 존재하지 않습니다: {self.data_path}")
 
         X = gdf[feature_cols]
-        y = gdf['is_hotspot']
+        y = gdf['is_trash']
         return X, y
 
     def train(self) -> Dict[str, float]:

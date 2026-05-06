@@ -153,7 +153,7 @@ class FeatureOrchestrator:
             
         # 1. 대상 Grid 로드 (예외 처리 포함)
         grid_filename = get_standard_filename("grid", self.region, self.grid_size, self.buffer_size)
-        features_filename = get_standard_filename("features", self.region, self.grid_size, self.buffer_size)
+        features_filename = get_standard_filename("features", self.region, self.grid_size, self.buffer_size, suffix=feature_type)
         target_path = self.processed_dir / features_filename
         
         if not target_path.exists():
@@ -172,10 +172,19 @@ class FeatureOrchestrator:
         print(f"🔍 [무결성 검증] 타겟 지역: '{self.safe_region_name}'")
         print(f"   -> 해당 지역 전용 Grid와 전용 데이터(poi_{self.safe_region_name}_raw.csv)간의 결합만 허용합니다.")
 
-        # 2. Extractor 객체 생성 및 연산 위임 (Strategy Pattern)
-        extractor_class = self.extractor_map[feature_type]
-        extractor = extractor_class(self.config, self.region, self.raw_dir)
-        grid_masked = extractor.extract(grid_masked)
+        # 2. Extractor 객체 생성 및 연산 위임 (Strategy Pattern & OCP 준수)
+        # 쉼표로 구분된 다중 피처들을 순차적으로 적용하여 확장에 열려있는(Open) 구조를 만듭니다.
+        feature_list = [f.strip() for f in feature_type.split(',')]
+        
+        for ft in feature_list:
+            if ft not in self.extractor_map:
+                raise ValueError(f"🚨 지원하지 않는 피처 종류입니다: '{ft}'\n"
+                                 f"   사용 가능한 피처: {list(self.extractor_map.keys())}")
+            
+            print(f"\n🧩 [{ft.upper()}] 피처 추출 파이프라인 가동 중...")
+            extractor_class = self.extractor_map[ft]
+            extractor = extractor_class(self.config, self.region, self.raw_dir)
+            grid_masked = extractor.extract(grid_masked)
 
         # 3. [Rule 4 준수] 결과물 덮어쓰기 (GeoPackage 포맷 유지)
         output_path = self.processed_dir / features_filename

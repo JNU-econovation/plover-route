@@ -52,10 +52,11 @@ class DatasetBuilder:
     [Rule 6 준수] DB View와 정적 피처(Grid)를 결합하여 최종 머신러닝 데이터셋을 생성하는 빌더 클래스입니다.
     전략 패턴(Strategy Pattern)을 사용하여 View 로더를 유연하게 교체할 수 있습니다.
     """
-    def __init__(self, region: str, grid_size: int, buffer_size: int, view_type: str = "baseline"):
+    def __init__(self, region: str, grid_size: int, buffer_size: int, view_type: str = "baseline", feature_type: str = "poi"):
         self.region = region
         self.grid_size = grid_size
         self.buffer_size = buffer_size
+        self.feature_type = feature_type
         self.safe_region_name = get_safe_region_name(region)
         
         self.config = load_config()
@@ -88,7 +89,7 @@ class DatasetBuilder:
         labels_gdf = ensure_crs(labels_gdf, self.PROJ_CRS)
         
         # 3. 타겟 Grid 로드
-        features_filename = get_standard_filename("features", self.region, self.grid_size, self.buffer_size)
+        features_filename = get_standard_filename("features", self.region, self.grid_size, self.buffer_size, suffix=self.feature_type)
         target_path = self.processed_dir / features_filename
         
         if not target_path.exists():
@@ -120,7 +121,8 @@ class DatasetBuilder:
         print(f"⚖️ 클래스 불균형 비율: {ratio:.4f}%")
 
         # 5. 최종 데이터셋 저장
-        output_filename = get_standard_filename("dataset", self.region, self.grid_size, self.buffer_size, suffix=self.view_type_name)
+        suffix = f"{self.view_type_name}_{self.feature_type.replace(',', '_').replace(' ', '')}"
+        output_filename = get_standard_filename("dataset", self.region, self.grid_size, self.buffer_size, suffix=suffix)
         output_path = self.processed_dir / output_filename
         print(f"💾 최종 학습 데이터셋 저장 중... -> {output_filename}")
         merged_gdf.to_file(output_path, driver='GPKG', layer='dataset')
