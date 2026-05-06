@@ -25,9 +25,9 @@ def test_infer_hotspot_without_push(mocker, dummy_result_gdf):
     mock_predictor_instance = mock_predictor_class.return_value
     mock_predictor_instance.predict.return_value = dummy_result_gdf
     
-    # 2. 파일 I/O 및 DB 접속 차단
+    # 2. 파일 I/O 및 Predictor.push_to_db 차단
     mocker.patch('geopandas.GeoDataFrame.to_file')
-    mock_engine = mocker.patch('sqlalchemy.create_engine')
+    mock_push = mocker.patch.object(mock_predictor_instance, 'push_to_db')
 
     # 3. CLI 실행 (옵션 없음)
     result = runner.invoke(app, [
@@ -40,12 +40,12 @@ def test_infer_hotspot_without_push(mocker, dummy_result_gdf):
     assert result.exit_code == 0
     assert "로컬 백업 저장 완료" in result.stdout
     assert "PostGIS DB 적재" not in result.stdout
-    mock_engine.assert_not_called()  # 핵심: DB 접속이 일어나면 안 됨!
+    mock_push.assert_not_called()  # 핵심: DB 연동 로직이 절대 호출되면 안 됨!
 
 def test_infer_hotspot_with_push(mocker, monkeypatch, dummy_result_gdf):
     """
     [TDD] --push 옵션이 있을 때: 
-    DB 주소를 읽어와 sqlalchemy 엔진을 생성하고 to_postgis가 호출되어야 합니다.
+    predictor.push_to_db 메서드가 정확하게 호출되어야 합니다.
     """
     # 1. 가짜 DB 환경변수 주입
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
@@ -56,8 +56,7 @@ def test_infer_hotspot_with_push(mocker, monkeypatch, dummy_result_gdf):
     mock_predictor_instance.predict.return_value = dummy_result_gdf
     
     mocker.patch('geopandas.GeoDataFrame.to_file')
-    mock_engine = mocker.patch('sqlalchemy.create_engine')
-    mock_to_postgis = mocker.patch('geopandas.GeoDataFrame.to_postgis')
+    mock_push = mocker.patch.object(mock_predictor_instance, 'push_to_db')
 
     # 3. CLI 실행 (--push 옵션 추가)
     result = runner.invoke(app, [
@@ -69,8 +68,6 @@ def test_infer_hotspot_with_push(mocker, monkeypatch, dummy_result_gdf):
     
     # 4. 검증
     assert result.exit_code == 0
-    assert "PostGIS DB 적재 완료" in result.stdout
     
-    # 핵심: 엔진이 생성되고, DB 밀어넣기 메서드가 정확히 1번 호출되어야 함
-    mock_engine.assert_called_once()
-    mock_to_postgis.assert_called_once()
+    # 핵심: Predictor의 DB 연동 메서드가 정확히 1번 호출되어야 함
+    mock_push.assert_called_once_with(dummy_result_gdf, "sqlite:///:memory:")

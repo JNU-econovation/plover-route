@@ -58,3 +58,21 @@ class HotspotPredictor:
         
         print("✅ 추론 완료! 'trash_score' 컬럼이 추가되었습니다.")
         return gdf
+
+    def push_to_db(self, gdf: gpd.GeoDataFrame, db_url: str, table_name: str = "predicted_hotspots"):
+        """
+        추론 결과를 PostGIS에 Upsert 방식으로 안전하게 적재합니다.
+        단일 책임 원칙(SRP)에 따라 DB 적재 역할을 Predictor 모듈로 캡슐화합니다.
+        """
+        import sqlalchemy
+        import time
+        from src.utils import upsert_geodataframe_to_postgis
+        
+        print("🌐 PostGIS DB(RDS)에 추론 결과 적재(Upsert)를 시작합니다...")
+        start_time = time.time()
+        engine = sqlalchemy.create_engine(db_url)
+        
+        upsert_geodataframe_to_postgis(gdf, table_name, engine, unique_col="grid_id")
+        
+        elapsed = time.time() - start_time
+        print(f"🚀 PostGIS DB 적재 완료! ({elapsed:.2f}초 소요)")

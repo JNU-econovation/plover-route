@@ -93,3 +93,44 @@ def get_pipeline_paths(config: dict, region: str, grid_size: int, buffer_size: i
         "result": processed_dir / result_name,
         "map": processed_dir / map_name
     }
+
+def upsert_geodataframe_to_postgis(gdf: gpd.GeoDataFrame, table_name: str, engine, unique_col: str = "grid_id"):
+    """
+    GeoDataFrame을 PostGIS DB에 Upsert(Update or Insert) 방식으로 적재합니다.
+    - 본 테이블이 없으면 최초 생성 및 Primary Key를 등록합니다.
+    - 대용량 데이터 병목을 막기 위해 임시 테이블(Temp Table) + Raw SQL Upsert 방식을 사용합니다.
+    """
+    import sqlalchemy
+    from sqlalchemy import text
+    
+    # [Rule 5] 타일 서버 및 라우팅 호환을 위해 투영 변환
+    gdf = ensure_crs(gdf, "EPSG:4326")
+    
+    inspector = sqlalchemy.inspect(engine)
+    if not inspector.has_table(table_name):
+        print(f"✨ 본 테이블('{table_name}')이 존재하지 않아 최초 생성합니다.")
+        gdf.to_postgis(table_name, engine, if_exists="replace", index=False)
+        with engine.begin() as conn:
+            # Upsert 동작을 위해 고유키(PK) 강제 지정
+            conn.execute(text(f'ALTER TABLE "{table_name}" ADD PRIMARY KEY ("{unique_col}");'))
+    else:
+        temp_table = f"{table_name}_temp"
+        print(f"📦 임시 테이블('{temp_table}')에 데이터 삽입 중...")
+        gdf.to_postgis(temp_table, engine, if_exists="replace", index=False)
+        
+        print(f"🔄 본 테이블('{table_name}')에 Upsert 병합을 시작합니다...")
+        columns = [col for col in gdf.columns if col != unique_col]
+        set_clause = ", ".join([f'"{col}" = EXCLUDED."{col}"' for col in columns])
+        
+        upsert_sql = text(f"""
+            INSERT INTO "{table_name}"
+            SELECT * FROM "{temp_table}"
+            ON CONFLICT ("{unique_col}")
+            DO UPDATE SET
+                {set_clause};
+        """)
+        
+        with engine.begin() as conn:
+            conn.execute(upsert_sql)
+            print(f"🧹 임시 테이블('{temp_table}') 정리 중...")
+            conn.execute(text(f'DROP TABLE "{temp_table}";'))

@@ -100,21 +100,7 @@ def infer_hotspot(
             typer.secho("🚨 .env 파일에 DATABASE_URL이 설정되지 않아 DB 업로드를 취소합니다.", fg=typer.colors.RED)
             raise typer.Exit(code=1)
             
-        import sqlalchemy
-        import time
-        
-        typer.secho("🌐 PostGIS DB(RDS)에 추론 결과 적재를 시작합니다...", fg=typer.colors.CYAN)
-        start_time = time.time()
-        engine = sqlalchemy.create_engine(db_url)
-        
-        # [Rule 5 준수] GraphHopper 및 타일 서버 호환을 위해 WGS84(EPSG:4326)로 투영 변환
-        gdf_db = gdf_result.to_crs("EPSG:4326")
-        
-        # predicted_hotspots 테이블에 통째로 밀어넣기
-        gdf_db.to_postgis("predicted_hotspots", engine, if_exists="replace", index=False)
-        
-        elapsed = time.time() - start_time
-        typer.secho(f"🚀 PostGIS DB 적재 완료! ({elapsed:.2f}초 소요)", fg=typer.colors.GREEN)
+        predictor.push_to_db(gdf_result, db_url)
 
 @app.command()
 def visualize_hotspot(
