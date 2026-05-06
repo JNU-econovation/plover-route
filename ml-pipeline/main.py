@@ -76,7 +76,8 @@ def infer_hotspot(
     train_region: str = typer.Option(config['spatial']['target_region'], help="모델을 학습시킨 지역명 (예: 광주 동구)"),
     grid_size: int = typer.Option(config['spatial']['grid_size_meters'], help="격자 크기(m)"),
     buffer: int = typer.Option(config['spatial']['buffer_size_meters'], help="마스킹 확장 버퍼 반경(m)"),
-    feature_type: str = typer.Option(config['pipeline']['default_feature_type'], help="추론 대상 피처 종류")
+    feature_type: str = typer.Option(config['pipeline']['default_feature_type'], help="추론 대상 피처 종류"),
+    push: bool = typer.Option(False, "--push", help="추론 결과를 PostGIS DB에 업로드합니다 (배포 시 필수)")
 ):
     """[Phase 6] 타겟 지역에 대해 학습된 모델로 핫스팟 확률(trash_score)을 추론합니다. (공간 전이 학습 지원)"""
     # 1. 모델이 있는 경로 (train_region 기준)
@@ -88,8 +89,32 @@ def infer_hotspot(
     predictor = HotspotPredictor(model_path=str(model_paths["model"]))
     gdf_result = predictor.predict(target_data_path=str(target_paths["features"]))
     
+    # 항상 로컬 백업용 GPKG 저장
     gdf_result.to_file(str(target_paths["result"]), driver="GPKG")
-    typer.secho(f"🎉 최종 추론 결과 저장 완료: {target_paths['result']}", fg=typer.colors.GREEN)
+    typer.secho(f"🎉 로컬 백업 저장 완료: {target_paths['result']}", fg=typer.colors.GREEN)
+    
+    # --push 플래그가 켜졌을 때만 실서비스 DB 연동
+    if push:
+        db_url = os.environ.get('DATABASE_URL')
+        if not db_url:
+            typer.secho("🚨 .env 파일에 DATABASE_URL이 설정되지 않아 DB 업로드를 취소합니다.", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+            
+        import sqlalchemy
+        import time
+        
+        typer.secho("🌐 PostGIS DB(RDS)에 추론 결과 적재를 시작합니다...", fg=typer.colors.CYAN)
+        start_time = time.time()
+        engine = sqlalchemy.create_engine(db_url)
+        
+        # [Rule 5 준수] GraphHopper 및 타일 서버 호환을 위해 WGS84(EPSG:4326)로 투영 변환
+        gdf_db = gdf_result.to_crs("EPSG:4326")
+        
+        # predicted_hotspots 테이블에 통째로 밀어넣기
+        gdf_db.to_postgis("predicted_hotspots", engine, if_exists="replace", index=False)
+        
+        elapsed = time.time() - start_time
+        typer.secho(f"🚀 PostGIS DB 적재 완료! ({elapsed:.2f}초 소요)", fg=typer.colors.GREEN)
 
 @app.command()
 def visualize_hotspot(
