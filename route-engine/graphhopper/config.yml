@@ -1,0 +1,28 @@
+graphhopper:
+  # 데이터 경로 설정
+  datareader.file: /app/map-data/south-korea-latest.osm.pbf
+  graph.location: /app/graph-cache
+
+  # Custom Areas 기능 활성화 (GeoJSON 폴더)
+  custom_areas.directory: /app/custom_areas
+
+  # 라우팅 프로필 설정
+  profiles:
+    - name: foot
+      vehicle: foot
+      weighting: custom  # 동적 가중치를 위한 custom 지정
+
+  # 속도 최적화를 위한 설정 (동적 라우팅을 위해 CH/LM 비활성화)
+  # 플로깅 같은 단거리/동적 라우팅은 Dijkstra(CH/LM 비활성화)를 쓰는 것이 유리합니다.
+  ch.profiles: []
+  lm.profiles: []
+
+server:
+  applicationConnectors:
+    - type: http
+      port: 8989
+      bindHost: 0.0.0.0
+  adminConnectors:
+    - type: http
+      port: 8990
+      bindHost: 0.0.0.0
