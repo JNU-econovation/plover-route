@@ -4,6 +4,7 @@ import typer
 # 기존 파이프라인 모듈들
 from src.grid_maker import generate_grid
 from src.feature_engineering import FeatureOrchestrator
+from src.data_fetcher import DongguramiFetcher
 from src.dataset_builder import DatasetBuilder
 from src.model_trainer import ModelTrainer
 from src.predictor import HotspotPredictor
@@ -16,6 +17,12 @@ config = load_config()
 
 # Typer 앱 초기화
 app = typer.Typer(help="GeoAI Plogging ML Pipeline Orchestrator (CLI)")
+
+@app.command()
+def fetch_raw_data():
+    """[Phase 0] 동구라미 외부 API에서 쓰레기 신고 데이터를 추출하여 DB에 적재합니다."""
+    fetcher = DongguramiFetcher()
+    fetcher.execute()
 
 @app.command()
 def add_grid(

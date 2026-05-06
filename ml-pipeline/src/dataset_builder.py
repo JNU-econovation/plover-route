@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 import time
 import yaml
 import pandas as pd
@@ -76,10 +78,11 @@ class DatasetBuilder:
 
     def build(self):
         t0 = time.time()
-        # 1. DB 엔진 설정
-        # 실제 환경에서는 config나 환경변수에서 가져와야 하지만 로컬 도커이므로 하드코딩 유지
-        DB_URI = 'postgresql://postgres:postgres@localhost:5432/geoai'
-        engine = create_engine(DB_URI)
+        # 1. DB 엔진 설정 (.env 환경변수 활용)
+        db_url = os.environ.get('DATABASE_URL')
+        if not db_url:
+            raise ValueError("🚨 .env 파일에 DATABASE_URL이 설정되지 않았습니다.")
+        engine = create_engine(db_url)
         
         # 2. Strategy 객체에 View 로딩 위임
         labels_gdf = self.view_loader.load_view(engine)
