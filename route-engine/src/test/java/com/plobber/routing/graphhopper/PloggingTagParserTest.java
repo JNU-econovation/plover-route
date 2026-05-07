@@ -31,7 +31,7 @@ class PloggingTagParserTest {
     @BeforeEach
     void setUp() {
         parser = new PloggingTagParser(hotspotRepository);
-        trashProbEnc = new DecimalEncodedValueImpl("trash_prob", 5, 0.032258, 0, false, false, false);
+        trashProbEnc = parser.getTrashProbEnc();
         trashProbEnc.init(new EncodedValue.InitializerConfig());
     }
 
