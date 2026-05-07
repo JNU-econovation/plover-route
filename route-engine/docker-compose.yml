@@ -1,24 +1,19 @@
 version: '3.8'
 
 services:
-  # 순수 길찾기 연산을 담당하는 GraphHopper 코어 엔진 (Zero-Java)
-  graphhopper-core:
+  # 핫스팟 확률(0.0~1.0)을 정밀하게 적용하기 위한 Java/Spring Boot 기반 라우팅 서버
+  route-engine:
     build: 
-      context: ./graphhopper
+      context: .
       dockerfile: Dockerfile
-    container_name: geoai_graphhopper_core
+    container_name: geoai_route_engine
     ports:
-      - "8989:8989"
+      - "8989:8989"  # GraphHopper/Spring Boot 통합 포트
+    env_file:
+      - .env
     volumes:
-      # 1. 컴파일된 그래프 캐시 유지 (속도 최적화)
       - ./graph-cache:/app/graph-cache
-      # 2. OSM 원본 데이터 보관 (재다운로드 방지)
       - ./map-data:/app/map-data
-      # 3. 새벽 배치 작업이 만든 GeoJSON 핫스팟 파일 주입 (Custom Areas)
-      - ./custom_areas:/app/custom_areas
-    environment:
-      # 대한민국 전체 로드 시 메모리 최소/최대 2GB 할당
-      - JAVA_OPTS=-Xmx2g -Xms2g
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
