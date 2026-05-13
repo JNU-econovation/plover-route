@@ -3,21 +3,21 @@ project:
   version: "V1_Demo"
 
 spatial:
-  base_crs: "EPSG:4326"        # WGS84 위경도 좌표계 (GraphHopper 호환 및 원본 OSM용)
-  projected_crs: "EPSG:5179"   # KATEC 한국 좌표계 (10m 등 미터 단위 계산 및 그리드 생성용)
-  grid_size_meters: 10         # 10m x 10m 격자 (논문 기반 모델링용)
-  buffer_size_meters: 10       # 도로 중심선 기준 마스킹 버퍼 반경
-  target_region: "Dong-gu, Gwangju, South Korea" # 모델 학습용 타겟 지역
+  base_crs: "EPSG:4326"
+  projected_crs: "EPSG:5179"
+  grid_size_meters: 10
+  buffer_size_meters: 10
+  target_region: "Dong-gu, Gwangju, South Korea"
 
 pipeline:
-  default_feature_type: "poi"  # 기본 생성 피처 종류 (상권)
-  default_view_type: "baseline" # 기본 정답지(View) 맵핑 전략
+  default_feature_type: "poi"
+  default_view_type: "baseline"
 
 data:
   paths:
-    raw: "./data/raw"         # 원본 데이터 저장 경로
-    processed: "./data/processed" # 그리드 및 결과 저장 경로
-    models: "./data/models"     # pkl 등 모델 저장 경로
+    raw: "./data/raw"
+    processed: "./data/processed"
+    models: "./data/models"
 
 model:
   training:

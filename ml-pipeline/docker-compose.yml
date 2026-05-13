@@ -1,18 +1,13 @@
 version: '3.8'
 
 services:
-  # 머신러닝 파이프라인 로컬 실행 환경
   ml-pipeline:
     build: 
       context: .
       dockerfile: Dockerfile
     container_name: geoai_ml_pipeline
     volumes:
-      # ml-pipeline/data 폴더를 도커 내부의 /data 로 연결합니다.
       - ./data:/data
     env_file:
-      # [핵심] AWS RDS 주소는 이 .env 파일로 주입합니다.
       - .env
-    
-    # 기본적으로 아무 명령이 없으면 도움말을 출력하고 꺼집니다.
     command: python main.py --help
