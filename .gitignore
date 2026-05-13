@@ -1,21 +1,5 @@
-# Python / uv
-__pycache__/
-*.py[cod]
-.venv/
+
 .env
-
-# Jupyter
-.ipynb_checkpoints/
-cache/
-
-# Data & Models (Ignore contents but preserve directories)
-ml-pipeline/data/*
-ml-pipeline/models/*
-
-# Preserve .gitkeep
-!ml-pipeline/data/**/.gitkeep
-!ml-pipeline/models/.gitkeep
-
 # GraphHopper & Java
 route-engine/graph-cache/
 route-engine/target/
