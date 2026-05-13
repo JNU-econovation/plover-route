@@ -5,8 +5,9 @@ import com.plobber.routing.service.RouteService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/route")
@@ -19,7 +20,7 @@ public class RouteController {
     }
 
     @GetMapping
-    public ResponseEntity<RouteResult> getRoute(@org.springframework.web.bind.annotation.ModelAttribute RouteRequest request) {
+    public ResponseEntity<RouteResult> getRoute(@Valid @org.springframework.web.bind.annotation.ModelAttribute RouteRequest request) {
         RouteResult result = routeService.calculateRoute(request);
         return ResponseEntity.ok(result);
     }

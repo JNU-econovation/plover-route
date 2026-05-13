@@ -22,6 +22,16 @@ public class RouteService {
     }
 
     public RouteResult calculateRoute(RouteRequest requestDto) {
+        if (requestDto.getDistance() <= 0) {
+            throw new IllegalArgumentException("Distance must be greater than 0");
+        }
+        if (Double.isNaN(requestDto.getLat()) || Double.isNaN(requestDto.getLon())) {
+            throw new IllegalArgumentException("Coordinates cannot be NaN");
+        }
+        if (requestDto.getLat() < -90 || requestDto.getLat() > 90 || requestDto.getLon() < -180 || requestDto.getLon() > 180) {
+            throw new IllegalArgumentException("Coordinates are out of bounds");
+        }
+
         CustomModel customModel = customModelBuilder.build(requestDto.getMode());
 
         GHRequest request = new GHRequest()

@@ -39,11 +39,11 @@ class GraphHopperConfigTest {
         assertThat(baseModel.getPriority()).isNotEmpty();
 
         boolean hasWalkingSpeed = baseModel.getSpeed().stream()
-                .anyMatch(stmt -> stmt.getCondition() != null && stmt.getCondition().contains("true"));
+                .anyMatch(stmt -> stmt.condition() != null && stmt.condition().contains("true"));
         assertThat(hasWalkingSpeed).isTrue();
 
         boolean hasMotorwayBlock = baseModel.getPriority().stream()
-                .anyMatch(stmt -> stmt.getCondition() != null && stmt.getCondition().contains("MOTORWAY"));
+                .anyMatch(stmt -> stmt.condition() != null && stmt.condition().contains("MOTORWAY"));
         assertThat(hasMotorwayBlock).isTrue();
 
 

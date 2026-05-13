@@ -26,8 +26,13 @@ class CustomModelBuilderTest {
         assertThat(priorities).isNotEmpty();
 
         boolean hasTrashProbCondition = priorities.stream()
-                .anyMatch(stmt -> stmt.getCondition() != null && stmt.getCondition().contains("trash_prob < 0.3"));
+                .anyMatch(stmt -> stmt.condition() != null && stmt.condition().contains("trash_prob < 0.3"));
         assertThat(hasTrashProbCondition).isTrue();
+
+        boolean hasRoadClassCondition = priorities.stream()
+                .anyMatch(stmt -> stmt.condition() != null && stmt.condition().contains("road_class == PRIMARY"));
+        assertThat(hasRoadClassCondition).isTrue();
+        assertThat(model.getDistanceInfluence()).isEqualTo(50.0);
     }
 
     @Test
@@ -45,8 +50,10 @@ class CustomModelBuilderTest {
         assertThat(priorities).isNotEmpty();
 
         boolean hasTrashProbCondition = priorities.stream()
-                .anyMatch(stmt -> stmt.getCondition() != null && stmt.getCondition().contains("trash_prob > 0.8"));
+                .anyMatch(stmt -> stmt.condition() != null && stmt.condition().contains("trash_prob > 0.8"));
         assertThat(hasTrashProbCondition).isTrue();
+
+        assertThat(model.getDistanceInfluence()).isEqualTo(70.0);
     }
 
     @Test

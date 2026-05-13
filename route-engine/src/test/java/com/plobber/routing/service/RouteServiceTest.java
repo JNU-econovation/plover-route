@@ -81,4 +81,36 @@ class RouteServiceTest {
         CustomModel customModelHint = capturedRequest.getHints().getObject(CustomModel.KEY, (CustomModel) null);
         assertThat(customModelHint).isNotNull();
     }
+
+    @Test
+    @DisplayName("거리(distance)가 0 이하일 경우 IllegalArgumentException을 던져야 한다.")
+    void calculateRoute_InvalidDistance_ThrowsException() {
+        // given
+        com.plobber.routing.controller.RouteRequest requestDto = new com.plobber.routing.controller.RouteRequest();
+        requestDto.setLat(35.1769);
+        requestDto.setLon(126.9058);
+        requestDto.setDistance(-500); // Invalid
+        requestDto.setMode("PLOGGING");
+
+        // when & then
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> routeService.calculateRoute(requestDto))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Distance must be greater than 0");
+    }
+
+    @Test
+    @DisplayName("위경도 값이 범위를 벗어날 경우 IllegalArgumentException을 던져야 한다.")
+    void calculateRoute_OutOfBoundsCoordinates_ThrowsException() {
+        // given
+        com.plobber.routing.controller.RouteRequest requestDto = new com.plobber.routing.controller.RouteRequest();
+        requestDto.setLat(91.0); // Invalid
+        requestDto.setLon(126.9058);
+        requestDto.setDistance(5000);
+        requestDto.setMode("PLOGGING");
+
+        // when & then
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> routeService.calculateRoute(requestDto))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Coordinates are out of bounds");
+    }
 }
