@@ -39,8 +39,9 @@ class PloggingTagParserTest {
     @DisplayName("길(Way) 좌표가 쓰레기 핫스팟에 포함되면 확률이 EncodedValue에 저장되어야 한다.")
     void testHandleWayTags_whenInsideHotspot_thenSetProbability() {
         ReaderWay way = new ReaderWay(1L);
-        way.setTag("lat", 37.5665);
-        way.setTag("lon", 126.9780);
+        com.graphhopper.util.PointList pointList = new com.graphhopper.util.PointList(1, false);
+        pointList.add(37.5665, 126.9780);
+        way.setTag("point_list", pointList);
         
         when(hotspotRepository.findProbabilityByPoint(anyDouble(), anyDouble())).thenReturn(0.83);
 
@@ -55,8 +56,9 @@ class PloggingTagParserTest {
     @DisplayName("핫스팟을 벗어난 지역이면 확률이 0.0으로 저장되어야 한다.")
     void testHandleWayTags_whenOutsideHotspot_thenSetZero() {
         ReaderWay way = new ReaderWay(2L);
-        way.setTag("lat", 35.1595);
-        way.setTag("lon", 129.1602);
+        com.graphhopper.util.PointList pointList = new com.graphhopper.util.PointList(1, false);
+        pointList.add(35.1595, 129.1602);
+        way.setTag("point_list", pointList);
         
         when(hotspotRepository.findProbabilityByPoint(anyDouble(), anyDouble())).thenReturn(0.0);
 
@@ -71,8 +73,9 @@ class PloggingTagParserTest {
     @DisplayName("확률이 1.0을 초과하면 1.0으로 저장되어야 한다.")
     void testHandleWayTags_whenProbExceedsOne_thenClampToOne() {
         ReaderWay way = new ReaderWay(3L);
-        way.setTag("lat", 37.5665);
-        way.setTag("lon", 126.9780);
+        com.graphhopper.util.PointList pointList = new com.graphhopper.util.PointList(1, false);
+        pointList.add(37.5665, 126.9780);
+        way.setTag("point_list", pointList);
         
         when(hotspotRepository.findProbabilityByPoint(anyDouble(), anyDouble())).thenReturn(1.5);
 
@@ -87,8 +90,9 @@ class PloggingTagParserTest {
     @DisplayName("확률이 음수면 0.0으로 저장되어야 한다.")
     void testHandleWayTags_whenProbIsNegative_thenClampToZero() {
         ReaderWay way = new ReaderWay(4L);
-        way.setTag("lat", 37.5665);
-        way.setTag("lon", 126.9780);
+        com.graphhopper.util.PointList pointList = new com.graphhopper.util.PointList(1, false);
+        pointList.add(37.5665, 126.9780);
+        way.setTag("point_list", pointList);
         
         when(hotspotRepository.findProbabilityByPoint(anyDouble(), anyDouble())).thenReturn(-0.5);
 
@@ -103,8 +107,9 @@ class PloggingTagParserTest {
     @DisplayName("확률이 NaN(결측치)이면 0.0으로 저장되어야 한다.")
     void testHandleWayTags_whenProbIsNaN_thenSetZero() {
         ReaderWay way = new ReaderWay(5L);
-        way.setTag("lat", 37.5665);
-        way.setTag("lon", 126.9780);
+        com.graphhopper.util.PointList pointList = new com.graphhopper.util.PointList(1, false);
+        pointList.add(37.5665, 126.9780);
+        way.setTag("point_list", pointList);
         
         when(hotspotRepository.findProbabilityByPoint(anyDouble(), anyDouble())).thenReturn(Double.NaN);
 

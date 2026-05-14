@@ -23,13 +23,17 @@ public class PloggingTagParser implements TagParser {
 
     @Override
     public void handleWayTags(int edgeId, EdgeIntAccess edgeIntAccess, ReaderWay way, IntsRef relationFlags) {
-        Double lat = way.getTag("lat", null);
-        Double lon = way.getTag("lon", null);
+        com.graphhopper.util.PointList pointList = way.getTag("point_list", null);
 
-        if (lat == null || lon == null) {
+        if (pointList == null || pointList.isEmpty()) {
             trashProbEnc.setDecimal(false, edgeId, edgeIntAccess, 0.0);
             return;
         }
+
+        // 도로의 중간 지점 좌표를 추출하여 대표값으로 사용
+        int midIndex = pointList.size() / 2;
+        double lat = pointList.getLat(midIndex);
+        double lon = pointList.getLon(midIndex);
 
         double prob = hotspotRepository.findProbabilityByPoint(lat, lon);
 
