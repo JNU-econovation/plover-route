@@ -14,7 +14,7 @@ public class HotspotRepositoryImpl implements HotspotRepository {
 
     @Override
     public double findProbabilityByPoint(double lat, double lon) {
-        String sql = "SELECT COALESCE(MAX(trash_score), 0.0) FROM hotspot_grid WHERE ST_Intersects(geom, ST_SetSRID(ST_MakePoint(?, ?), 4326))";
+        String sql = "SELECT COALESCE(MAX(trash_score), 0.0) FROM predicted_hotspots WHERE ST_Intersects(geometry, ST_SetSRID(ST_MakePoint(?, ?), 4326))";
         Double probability = jdbcTemplate.queryForObject(sql, Double.class, lon, lat);
         return probability != null ? probability : 0.0;
     }

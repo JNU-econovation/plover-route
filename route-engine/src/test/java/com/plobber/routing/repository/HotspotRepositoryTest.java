@@ -29,7 +29,7 @@ class HotspotRepositoryTest {
         // given
         double lat = 37.5665;
         double lon = 126.9780;
-        String expectedSql = "SELECT COALESCE(MAX(trash_score), 0.0) FROM hotspot_grid WHERE ST_Intersects(geom, ST_SetSRID(ST_MakePoint(?, ?), 4326))";
+        String expectedSql = "SELECT COALESCE(MAX(trash_score), 0.0) FROM predicted_hotspots WHERE ST_Intersects(geometry, ST_SetSRID(ST_MakePoint(?, ?), 4326))";
 
         given(jdbcTemplate.queryForObject(eq(expectedSql), eq(Double.class), eq(lon), eq(lat)))
                 .willReturn(0.85);
