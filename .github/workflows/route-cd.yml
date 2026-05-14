@@ -55,9 +55,7 @@ jobs:
           cache: 'gradle'
 
       - name: Set lowercase Docker username
-        run: |
-          CLEANED=$(echo "${DOCKER_USERNAME}" | tr '[:upper:]' '[:lower:]' | xargs)
-          echo "DOCKER_USER=${CLEANED}" >> $GITHUB_ENV
+        run: echo "DOCKER_USER=${DOCKER_USERNAME,,}" >> $GITHUB_ENV
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
 
@@ -75,9 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set lowercase Docker username for deploy
-        run: |
-          CLEANED=$(echo "${DOCKER_USERNAME}" | tr '[:upper:]' '[:lower:]' | xargs)
-          echo "DOCKER_USER=${CLEANED}" >> $GITHUB_ENV
+        run: echo "DOCKER_USER=${DOCKER_USERNAME,,}" >> $GITHUB_ENV
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
 
