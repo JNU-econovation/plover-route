@@ -12,8 +12,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./graph-cache:/app/graph-cache
-      - ./map-data:/app/map-data
+      - ./map-data:/app/data
+      - ./graph-cache:/app/target/gwangju-routing-graph-cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
