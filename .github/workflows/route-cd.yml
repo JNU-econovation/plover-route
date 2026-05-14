@@ -92,6 +92,6 @@ jobs:
             APP_IMAGE=${APP_IMAGE}
             EOF
             
-            docker-compose pull route-engine
-            docker-compose up -d
+            docker compose pull route-engine
+            docker compose up -d
             docker image prune -f
