@@ -1,14 +1,14 @@
 version: '3.8'
 
 services:
-  # 핫스팟 확률(0.0~1.0)을 정밀하게 적용하기 위한 Java/Spring Boot 기반 라우팅 서버
   route-engine:
+    image: ${APP_IMAGE:-route-engine-local:latest}
     build: 
       context: .
       dockerfile: Dockerfile
     container_name: geoai_route_engine
     ports:
-      - "8989:8989"  # GraphHopper/Spring Boot 통합 포트
+      - "8989:8989"
     env_file:
       - .env
     volumes:
@@ -20,3 +20,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
