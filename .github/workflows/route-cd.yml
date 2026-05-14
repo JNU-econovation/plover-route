@@ -80,7 +80,7 @@ jobs:
           key: ${{ secrets.ROUTE_EC2_SSH_KEY }}
           envs: DB_URL,DB_USER,DB_PASSWORD,APP_IMAGE
           script: |
-            cd ~/machine-learning-practice
+            cd ~/plover-route
             git pull origin main
             
             cd route-engine
