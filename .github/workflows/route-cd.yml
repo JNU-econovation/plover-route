@@ -54,17 +54,12 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Set lowercase Docker username
-        run: echo "DOCKER_USER=${DOCKER_USERNAME,,}" >> $GITHUB_ENV
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-
       - name: Build and Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./route-engine
           push: true
-          tags: ${{ env.DOCKER_USER }}/geoai-route-engine:latest
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/geoai-route-engine:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -72,18 +67,13 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Set lowercase Docker username for deploy
-        run: echo "DOCKER_USER=${DOCKER_USERNAME,,}" >> $GITHUB_ENV
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
           DB_URL: ${{ secrets.DB_URL }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          APP_IMAGE: ${{ env.DOCKER_USER }}/geoai-route-engine:latest
+          APP_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/geoai-route-engine:latest
         with:
           host: ${{ secrets.ROUTE_EC2_HOST }}
           username: ubuntu
