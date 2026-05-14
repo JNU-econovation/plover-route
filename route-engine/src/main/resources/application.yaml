@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
   application:
     name: route-engine
 
@@ -9,7 +11,7 @@ spring:
     driver-class-name: org.postgresql.Driver
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
-      maximum-pool-size: 15 # 라우팅 엔진은 병렬 쿼리가 많으므로 기본값(10)보다 약간 늘림
+      maximum-pool-size: 15
       minimum-idle: 5
       connection-timeout: 20000
 

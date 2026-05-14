@@ -7,12 +7,15 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+
+import java.util.Arrays;
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class HotspotRepositoryTest {
@@ -24,37 +27,64 @@ class HotspotRepositoryTest {
     private HotspotRepositoryImpl hotspotRepository;
 
     @Test
-    @DisplayName("좌표를 주면 PostGIS의 ST_Intersects 공간 쿼리를 통해 확률값을 정상적으로 가져와야 한다.")
-    void findProbabilityByPointTest() {
+    @DisplayName("캐시된 데이터 중 좌표를 포함하는 핫스팟이 있으면 그 점수를 반환해야 한다.")
+    void findProbabilityByPoint_whenInsideHotspot_ReturnsScore() {
         // given
-        double lat = 37.5665;
-        double lon = 126.9780;
-        String expectedSql = "SELECT COALESCE(MAX(trash_score), 0.0) FROM predicted_hotspots WHERE ST_Intersects(geometry, ST_SetSRID(ST_MakePoint(?, ?), 4326))";
-
-        given(jdbcTemplate.queryForObject(eq(expectedSql), eq(Double.class), eq(lon), eq(lat)))
-                .willReturn(0.85);
+        HotspotRepositoryImpl.Hotspot hotspot1 = new HotspotRepositoryImpl.Hotspot(37.0, 38.0, 126.0, 127.0, 0.85);
+        HotspotRepositoryImpl.Hotspot hotspot2 = new HotspotRepositoryImpl.Hotspot(35.0, 36.0, 128.0, 129.0, 0.40);
+        
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Arrays.asList(hotspot1, hotspot2));
 
         // when
-        double probability = hotspotRepository.findProbabilityByPoint(lat, lon);
+        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
 
         // then
-
         assertThat(probability).isEqualTo(0.85);
-        verify(jdbcTemplate).queryForObject(eq(expectedSql), eq(Double.class), eq(lon), eq(lat));
     }
 
     @Test
-    @DisplayName("쿼리 결과가 null일 경우 (해당 좌표에 그리드가 없을 때) 0.0을 반환해야 한다.")
-    void findProbabilityByPointReturnsZeroWhenNullTest() {
+    @DisplayName("좌표가 여러 핫스팟에 겹칠 경우 가장 높은 점수를 반환해야 한다.")
+    void findProbabilityByPoint_whenOverlapping_ReturnsMaxScore() {
         // given
-        double lat = 37.5665;
-        double lon = 126.9780;
+        HotspotRepositoryImpl.Hotspot hotspot1 = new HotspotRepositoryImpl.Hotspot(37.0, 38.0, 126.0, 127.0, 0.50);
+        HotspotRepositoryImpl.Hotspot hotspot2 = new HotspotRepositoryImpl.Hotspot(37.0, 38.0, 126.0, 127.0, 0.95);
         
-        given(jdbcTemplate.queryForObject(any(String.class), eq(Double.class), eq(lon), eq(lat)))
-                .willReturn(null);
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Arrays.asList(hotspot1, hotspot2));
 
         // when
-        double probability = hotspotRepository.findProbabilityByPoint(lat, lon);
+        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
+
+        // then
+        assertThat(probability).isEqualTo(0.95);
+    }
+
+    @Test
+    @DisplayName("캐시된 데이터 중 좌표를 포함하는 핫스팟이 없으면 0.0을 반환해야 한다.")
+    void findProbabilityByPoint_whenOutsideHotspot_ReturnsZero() {
+        // given
+        HotspotRepositoryImpl.Hotspot hotspot = new HotspotRepositoryImpl.Hotspot(35.0, 36.0, 128.0, 129.0, 0.40);
+        
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Collections.singletonList(hotspot));
+
+        // when
+        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
+
+        // then
+        assertThat(probability).isEqualTo(0.0);
+    }
+
+    @Test
+    @DisplayName("DB에 핫스팟 데이터가 아예 없으면 0.0을 반환해야 한다.")
+    void findProbabilityByPoint_whenNoData_ReturnsZero() {
+        // given
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Collections.emptyList());
+
+        // when
+        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
 
         // then
         assertThat(probability).isEqualTo(0.0);

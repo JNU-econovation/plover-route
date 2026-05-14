@@ -42,7 +42,7 @@ public class RouteService {
         request.getHints().putObject("round_trip.distance", requestDto.distance());
         request.getHints().putObject("round_trip.seed", (long) (Math.random() * 1000));
         request.getHints().putObject("ch.disable", true);
-        request.getHints().putObject(CustomModel.KEY, customModel);
+        request.setCustomModel(customModel);
 
         GHResponse response = graphHopper.route(request);
 
