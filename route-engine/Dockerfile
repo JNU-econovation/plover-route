@@ -19,7 +19,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r spring && useradd -r -g spring spring
+RUN groupadd -r -g 1000 spring && useradd -r -u 1000 -g spring spring
 RUN mkdir -p /app/data /app/target/gwangju-routing-graph-cache \
     && chown -R spring:spring /app
 USER spring
