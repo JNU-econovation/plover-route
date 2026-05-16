@@ -74,8 +74,7 @@ class RouteServiceTest {
         assertThat(capturedRequest.getHints().getInt("round_trip.distance", 0)).isEqualTo(5000);
         assertThat(capturedRequest.getHints().getBool("ch.disable", false)).isTrue();
 
-        CustomModel customModelHint = capturedRequest.getHints().getObject(CustomModel.KEY, (CustomModel) null);
-        assertThat(customModelHint).isNotNull();
+        assertThat(capturedRequest.getCustomModel()).isNotNull();
     }
 
     @Test
