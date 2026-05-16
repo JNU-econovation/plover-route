@@ -1,8 +1,10 @@
 package com.plobber.routing.service;
 
+import com.graphhopper.jsprit.core.problem.VehicleRoutingProblem;
 import com.graphhopper.util.shapes.GHPoint;
 import com.plobber.routing.repository.HotspotInfo;
 import com.plobber.routing.repository.HotspotRepository;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -103,5 +105,65 @@ class HotspotSelectorTest {
         assertThat(result).hasSize(2);
         assertThat(result).extracting(HotspotInfo::id).containsExactlyInAnyOrder("h1", "h2");
         assertThat(result).extracting(HotspotInfo::score).containsExactlyInAnyOrder(0.90, 0.80);
+    }
+
+    @Test
+    @DisplayName("VRP 문제가 올바른 Vehicle, Service, CostMatrix로 구성되어야 한다.")
+    void buildVrp_correctlyConfigured() {
+        // given
+        List<HotspotInfo> candidates = List.of(
+                new HotspotInfo("h1", 35.18, 126.91, 0.90),
+                new HotspotInfo("h2", 35.17, 126.92, 0.80)
+        );
+        double[][] distMatrix = {
+            { 0,   800,  600 },
+            { 800,   0,  400 },
+            { 600, 400,    0 }
+        };
+
+        // when
+        VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 5000);
+
+        // then
+        assertThat(vrp.getVehicles()).hasSize(1);
+        assertThat(vrp.getJobs()).hasSize(2);
+
+        var vehicle = vrp.getVehicles().iterator().next();
+        assertThat(vehicle.getStartLocation().getId()).isEqualTo("0");
+        assertThat(vehicle.getEndLocation().getId()).isEqualTo("0");
+        assertThat(vehicle.getLatestArrival()).isCloseTo(5000 / 1.39, Offset.offset(1.0));
+    }
+
+    @Test
+    @DisplayName("UNREACHABLE 제거 후 거리 행렬이 올바르게 재구성되어야 한다.")
+    void rebuildMatrix_correctlyRebuilds() {
+        // given
+        List<HotspotInfo> filtered = List.of(
+                new HotspotInfo("h1", 35.18, 126.91, 0.90),
+                new HotspotInfo("h3", 35.17, 126.92, 0.80)
+        );
+        List<GHPoint> originalPoints = List.of(
+                new GHPoint(35.17, 126.91),
+                new GHPoint(35.18, 126.91),
+                new GHPoint(36.00, 127.50),
+                new GHPoint(35.17, 126.92)
+        );
+        double[][] original = {
+            {   0,  800, -1.0,  600 },
+            { 800,    0, -1.0,  400 },
+            {-1.0, -1.0,    0, -1.0 },
+            { 600,  400, -1.0,    0 }
+        };
+
+        // when
+        double[][] result = hotspotSelector.rebuildMatrix(filtered, originalPoints, original);
+
+        // then
+        assertThat(result).hasNumberOfRows(3);
+        assertThat(result[0][0]).isEqualTo(0);
+        assertThat(result[0][1]).isEqualTo(800);
+        assertThat(result[0][2]).isEqualTo(600);
+        assertThat(result[1][2]).isEqualTo(400);
+        assertThat(result[1][0]).isEqualTo(result[0][1]);
     }
 }
