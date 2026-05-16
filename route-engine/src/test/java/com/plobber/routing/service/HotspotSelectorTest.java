@@ -1,5 +1,6 @@
 package com.plobber.routing.service;
 
+import com.graphhopper.jsprit.core.algorithm.box.Jsprit;
 import com.graphhopper.jsprit.core.problem.VehicleRoutingProblem;
 import com.graphhopper.util.shapes.GHPoint;
 import com.plobber.routing.repository.HotspotInfo;
@@ -15,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -165,5 +167,87 @@ class HotspotSelectorTest {
         assertThat(result[0][2]).isEqualTo(600);
         assertThat(result[1][2]).isEqualTo(400);
         assertThat(result[1][0]).isEqualTo(result[0][1]);
+    }
+
+    @Test
+    @DisplayName("jsprit 솔버가 예산 내 방문 가능한 핫스팟을 순서대로 반환해야 한다.")
+    void solveAndExtract_returnsVisitOrder() {
+        // given
+        List<HotspotInfo> candidates = List.of(
+                new HotspotInfo("h1", 35.18, 126.91, 0.90),
+                new HotspotInfo("h2", 35.17, 126.92, 0.80)
+        );
+        double[][] distMatrix = {
+            { 0,   800,  600 },
+            { 800,   0,  400 },
+            { 600, 400,    0 }
+        };
+
+        Map<String, Double> jobScoreMap = Map.of("job_1", 0.90, "job_2", 0.80);
+        VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 5000);
+
+        // when
+        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap);
+
+        // then
+        assertThat(visitOrder).isNotEmpty();
+        assertThat(visitOrder).hasSize(2);
+        assertThat(visitOrder).allMatch(id -> id.startsWith("job_"));
+        assertThat(visitOrder).doesNotHaveDuplicates();
+        assertThat(visitOrder).containsExactlyInAnyOrder("job_1", "job_2");
+    }
+
+    @Test
+    @DisplayName("예산이 극도로 작으면 일부 핫스팟만 방문해야 한다.")
+    void solveAndExtract_tightBudget_skipsLowScoreHotspots() {
+        // given: 예산 500m → 왕복하기엔 너무 작음
+        List<HotspotInfo> candidates = List.of(
+                new HotspotInfo("h1", 35.18, 126.91, 0.90),
+                new HotspotInfo("h2", 35.19, 126.93, 0.30),
+                new HotspotInfo("h3", 35.20, 126.94, 0.10)
+        );
+        double[][] distMatrix = {
+            { 0,    800,  1500,  2000 },
+            { 800,    0,   700,  1200 },
+            { 1500, 700,     0,   500 },
+            { 2000, 1200,  500,     0 }
+        };
+
+        Map<String, Double> jobScoreMap = Map.of(
+                "job_1", 0.90, "job_2", 0.30, "job_3", 0.10);
+        VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 500);
+
+        // when
+        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap);
+
+        // then
+        assertThat(visitOrder.size()).isLessThan(3);
+    }
+
+    @Test
+    @DisplayName("목적 함수는 미방문 핫스팟에 score × 10000 패널티를 부과해야 한다.")
+    void buildObjectiveFunction_penalizesUnassignedByScore() {
+        // given
+        List<HotspotInfo> candidates = List.of(
+                new HotspotInfo("h1", 35.18, 126.91, 0.90)
+        );
+        double[][] distMatrix = {
+            { 0,  800 },
+            { 800,  0 }
+        };
+
+        Map<String, Double> jobScoreMap = Map.of("job_1", 0.90);
+        VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 5000);
+
+        var objectiveFunction = hotspotSelector.buildObjectiveFunction(vrp, jobScoreMap);
+
+        // when
+        var allVisitedSolution = com.graphhopper.jsprit.core.util.Solutions.bestOf(
+                Jsprit.Builder.newInstance(vrp).buildAlgorithm().searchSolutions());
+        double allVisitedCost = objectiveFunction.getCosts(allVisitedSolution);
+
+        // then
+        assertThat(allVisitedCost).isGreaterThan(0);
+        assertThat(allVisitedCost).isLessThan(0.90 * 10_000);
     }
 }

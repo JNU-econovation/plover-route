@@ -1,20 +1,33 @@
 package com.plobber.routing.service;
 
+import com.graphhopper.jsprit.core.algorithm.VehicleRoutingAlgorithm;
+import com.graphhopper.jsprit.core.algorithm.box.Jsprit;
+import com.graphhopper.jsprit.core.algorithm.recreate.Insertion;
+import com.graphhopper.jsprit.core.algorithm.ruin.Ruin;
 import com.graphhopper.jsprit.core.problem.Location;
 import com.graphhopper.jsprit.core.problem.VehicleRoutingProblem;
 import com.graphhopper.jsprit.core.problem.cost.VehicleRoutingTransportCosts;
+import com.graphhopper.jsprit.core.problem.job.Job;
 import com.graphhopper.jsprit.core.problem.job.Service;
+import com.graphhopper.jsprit.core.problem.solution.SolutionCostCalculator;
+import com.graphhopper.jsprit.core.problem.solution.VehicleRoutingProblemSolution;
+import com.graphhopper.jsprit.core.problem.solution.route.VehicleRoute;
+import com.graphhopper.jsprit.core.problem.solution.route.activity.TourActivity;
 import com.graphhopper.jsprit.core.problem.vehicle.VehicleImpl;
 import com.graphhopper.jsprit.core.problem.vehicle.VehicleType;
 import com.graphhopper.jsprit.core.problem.vehicle.VehicleTypeImpl;
+import com.graphhopper.jsprit.core.util.Solutions;
 import com.graphhopper.jsprit.core.util.VehicleRoutingTransportCostsMatrix;
 import com.graphhopper.util.shapes.GHPoint;
 import com.plobber.routing.repository.HotspotInfo;
 import com.plobber.routing.repository.HotspotRepository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @org.springframework.stereotype.Service
 public class HotspotSelector {
@@ -22,6 +35,8 @@ public class HotspotSelector {
     private static final int MAX_CANDIDATES = 15;
     private static final double SEARCH_RADIUS_RATIO = 0.4;
     private static final double WALKING_SPEED_MPS = 1.39;
+    private static final double PENALTY_MULTIPLIER = 10_000.0;
+    private static final int MAX_ITERATIONS = 100;
 
     private final HotspotRepository hotspotRepository;
     private final DistanceMatrixService distanceMatrixService;
@@ -51,10 +66,67 @@ public class HotspotSelector {
         }
 
         double[][] filteredMatrix = rebuildMatrix(candidates, points, distMatrix);
+        Map<String, Double> jobScoreMap = buildJobScoreMap(candidates);
         VehicleRoutingProblem vrp = buildVrp(candidates, filteredMatrix, budgetMeters);
 
-        // TODO: Phase 4c에서 알고리즘 실행 + 결과 추출
-        return candidates;
+        List<String> visitOrder = solveAndExtract(vrp, jobScoreMap);
+
+        return orderCandidates(candidates, visitOrder);
+    }
+
+    List<String> solveAndExtract(VehicleRoutingProblem vrp, Map<String, Double> jobScoreMap) {
+        SolutionCostCalculator objectiveFunction = buildObjectiveFunction(vrp, jobScoreMap);
+
+        VehicleRoutingAlgorithm algorithm = Jsprit.Builder.newInstance(vrp)
+                .setObjectiveFunction(objectiveFunction)
+                .addRuinOperator(0.3, Ruin.radial(0.3))
+                .addRuinOperator(0.2, Ruin.random(0.3))
+                .addRuinOperator(0.2, Ruin.cluster())
+                .addRuinOperator(0.3, Ruin.kruskalCluster())
+                .addInsertionOperator(0.7, Insertion.regretFast())
+                .addInsertionOperator(0.3, Insertion.best())
+                .buildAlgorithm();
+
+        algorithm.setMaxIterations(MAX_ITERATIONS);
+        Collection<VehicleRoutingProblemSolution> solutions = algorithm.searchSolutions();
+        VehicleRoutingProblemSolution best = Solutions.bestOf(solutions);
+
+        List<String> visitOrder = new ArrayList<>();
+        for (VehicleRoute route : best.getRoutes()) {
+            for (TourActivity activity : route.getActivities()) {
+                if (activity instanceof TourActivity.JobActivity jobActivity) {
+                    visitOrder.add(jobActivity.getJob().getId());
+                }
+            }
+        }
+        return visitOrder;
+    }
+
+    SolutionCostCalculator buildObjectiveFunction(VehicleRoutingProblem vrp, Map<String, Double> jobScoreMap) {
+        return solution -> {
+            double transportCost = 0.0;
+            for (VehicleRoute route : solution.getRoutes()) {
+                transportCost += route.getVehicle().getType().getVehicleCostParams().fix;
+                TourActivity prev = route.getStart();
+                for (TourActivity act : route.getActivities()) {
+                    transportCost += vrp.getTransportCosts().getTransportCost(
+                            prev.getLocation(), act.getLocation(),
+                            prev.getEndTime(), route.getDriver(), route.getVehicle());
+                    prev = act;
+                }
+                transportCost += vrp.getTransportCosts().getTransportCost(
+                        prev.getLocation(), route.getEnd().getLocation(),
+                        prev.getEndTime(), route.getDriver(), route.getVehicle());
+            }
+
+            double unassignedPenalty = 0.0;
+            for (Job job : solution.getUnassignedJobs()) {
+                double score = jobScoreMap.getOrDefault(job.getId(), 0.0);
+                unassignedPenalty += score * PENALTY_MULTIPLIER;
+            }
+
+            return transportCost + unassignedPenalty;
+        };
     }
 
     VehicleRoutingProblem buildVrp(List<HotspotInfo> candidates, double[][] distMatrix, int budgetMeters) {
@@ -87,6 +159,30 @@ public class HotspotSelector {
         }
 
         return vrpBuilder.build();
+    }
+
+    private Map<String, Double> buildJobScoreMap(List<HotspotInfo> candidates) {
+        Map<String, Double> map = new HashMap<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            map.put("job_" + (i + 1), candidates.get(i).score());
+        }
+        return map;
+    }
+
+    private List<HotspotInfo> orderCandidates(List<HotspotInfo> candidates, List<String> visitOrder) {
+        Map<String, HotspotInfo> jobToHotspot = new HashMap<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            jobToHotspot.put("job_" + (i + 1), candidates.get(i));
+        }
+
+        List<HotspotInfo> ordered = new ArrayList<>();
+        for (String jobId : visitOrder) {
+            HotspotInfo h = jobToHotspot.get(jobId);
+            if (h != null) {
+                ordered.add(h);
+            }
+        }
+        return ordered;
     }
 
     private VehicleRoutingTransportCosts buildCostMatrix(List<HotspotInfo> candidates, double[][] distMatrix) {
