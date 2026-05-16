@@ -35,7 +35,7 @@ public class HotspotSelector {
     private static final int MAX_CANDIDATES = 15;
     private static final double SEARCH_RADIUS_RATIO = 0.4;
     private static final double WALKING_SPEED_MPS = 1.39;
-    private static final double PENALTY_MULTIPLIER = 10_000.0;
+    private static final double PENALTY_MULTIPLIER = 1000.0;
     private static final int MAX_ITERATIONS = 100;
 
     private final HotspotRepository hotspotRepository;

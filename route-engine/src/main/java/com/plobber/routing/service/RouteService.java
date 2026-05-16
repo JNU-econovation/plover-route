@@ -5,44 +5,43 @@ import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.util.CustomModel;
+import com.graphhopper.util.PointList;
 import com.graphhopper.util.shapes.GHPoint;
 import com.plobber.routing.controller.RouteRequest;
 import com.plobber.routing.graphhopper.CustomModelBuilder;
+import com.plobber.routing.repository.HotspotInfo;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Service
 public class RouteService {
 
     private final GraphHopper graphHopper;
     private final CustomModelBuilder customModelBuilder;
+    private final HotspotSelector hotspotSelector;
 
-    public RouteService(GraphHopper graphHopper, CustomModelBuilder customModelBuilder) {
+    public RouteService(GraphHopper graphHopper, CustomModelBuilder customModelBuilder,
+                        HotspotSelector hotspotSelector) {
         this.graphHopper = graphHopper;
         this.customModelBuilder = customModelBuilder;
+        this.hotspotSelector = hotspotSelector;
     }
 
     public RouteResult calculateRoute(RouteRequest requestDto) {
-        if (requestDto.distance() <= 0) {
-            throw new IllegalArgumentException("Distance must be greater than 0");
-        }
-        if (Double.isNaN(requestDto.lat()) || Double.isNaN(requestDto.lon())) {
-            throw new IllegalArgumentException("Coordinates cannot be NaN");
-        }
-        if (requestDto.lat() < -90 || requestDto.lat() > 90 || requestDto.lon() < -180 || requestDto.lon() > 180) {
-            throw new IllegalArgumentException("Coordinates are out of bounds");
-        }
+        validateRequest(requestDto);
+
+        List<HotspotInfo> selectedHotspots = hotspotSelector.selectOptimalRoute(
+                requestDto.lat(), requestDto.lon(), requestDto.distance());
 
         CustomModel customModel = customModelBuilder.build(requestDto.mode());
 
-        GHRequest request = new GHRequest()
-                .addPoint(new GHPoint(requestDto.lat(), requestDto.lon()))
-                .setProfile("plogging_foot")
-                .setAlgorithm("round_trip");
-        
-        request.getHints().putObject("round_trip.distance", requestDto.distance());
-        request.getHints().putObject("round_trip.seed", (long) (Math.random() * 1000));
-        request.getHints().putObject("ch.disable", true);
-        request.setCustomModel(customModel);
+        GHRequest request;
+        if (selectedHotspots.isEmpty()) {
+            request = buildRoundTripRequest(requestDto, customModel);
+        } else {
+            request = buildWaypointRequest(requestDto, selectedHotspots, customModel);
+        }
 
         GHResponse response = graphHopper.route(request);
 
@@ -51,13 +50,58 @@ public class RouteService {
         }
 
         ResponsePath bestPath = response.getBest();
-        
         String encodedPath = encodePolyline(bestPath.getPoints());
-        
+
         return new RouteResult(bestPath.getDistance(), bestPath.getTime(), encodedPath);
     }
 
-    private String encodePolyline(com.graphhopper.util.PointList points) {
+    private GHRequest buildWaypointRequest(RouteRequest requestDto,
+                                           List<HotspotInfo> hotspots,
+                                           CustomModel customModel) {
+        GHRequest request = new GHRequest();
+        request.addPoint(new GHPoint(requestDto.lat(), requestDto.lon()));
+
+        for (HotspotInfo h : hotspots) {
+            request.addPoint(new GHPoint(h.centerLat(), h.centerLon()));
+        }
+
+        request.addPoint(new GHPoint(requestDto.lat(), requestDto.lon()));
+
+        request.setProfile("plogging_foot");
+        request.getHints().putObject("ch.disable", true);
+        request.setCustomModel(customModel);
+
+        return request;
+    }
+
+    private GHRequest buildRoundTripRequest(RouteRequest requestDto, CustomModel customModel) {
+        GHRequest request = new GHRequest()
+                .addPoint(new GHPoint(requestDto.lat(), requestDto.lon()))
+                .setProfile("plogging_foot")
+                .setAlgorithm("round_trip");
+
+        request.getHints().putObject("round_trip.distance", requestDto.distance());
+        request.getHints().putObject("round_trip.seed", (long) (Math.random() * 1000));
+        request.getHints().putObject("ch.disable", true);
+        request.setCustomModel(customModel);
+
+        return request;
+    }
+
+    private void validateRequest(RouteRequest requestDto) {
+        if (requestDto.distance() <= 0) {
+            throw new IllegalArgumentException("Distance must be greater than 0");
+        }
+        if (Double.isNaN(requestDto.lat()) || Double.isNaN(requestDto.lon())) {
+            throw new IllegalArgumentException("Coordinates cannot be NaN");
+        }
+        if (requestDto.lat() < -90 || requestDto.lat() > 90
+                || requestDto.lon() < -180 || requestDto.lon() > 180) {
+            throw new IllegalArgumentException("Coordinates are out of bounds");
+        }
+    }
+
+    private String encodePolyline(PointList points) {
         long prevLat = 0;
         long prevLon = 0;
         StringBuilder sb = new StringBuilder();
