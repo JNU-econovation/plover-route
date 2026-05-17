@@ -36,12 +36,14 @@ import java.util.Map;
 @org.springframework.stereotype.Service
 public class HotspotSelector {
 
-    private static final int MAX_CANDIDATES = 5;
+    private static final int MIN_CANDIDATES = 3;
+    private static final int MAX_CANDIDATES_CAP = 10;
+    private static final double CANDIDATES_PER_METER = 1.0 / 700.0;
+    private static final double SEGMENT_DISTANCE_RATIO = 0.25;
     private static final double SEARCH_RADIUS_RATIO = 0.25;
     private static final double WALKING_SPEED_MPS = 1.39;
     private static final double PENALTY_MULTIPLIER = 2000.0;
     private static final int MAX_ITERATIONS = 100;
-    private static final double MAX_SEGMENT_DISTANCE = 1000.0;
 
     private final HotspotRepository hotspotRepository;
     private final DistanceMatrixService distanceMatrixService;
@@ -54,8 +56,9 @@ public class HotspotSelector {
 
     public List<HotspotInfo> selectOptimalRoute(double startLat, double startLon, int budgetMeters) {
         double searchRadius = budgetMeters * SEARCH_RADIUS_RATIO;
+        int dynamicCandidates = calculateDynamicCandidates(budgetMeters);
         List<HotspotInfo> candidates = hotspotRepository.findTopNearby(
-                startLat, startLon, searchRadius, MAX_CANDIDATES);
+                startLat, startLon, searchRadius, dynamicCandidates);
 
         if (candidates.isEmpty()) {
             return Collections.emptyList();
@@ -74,18 +77,19 @@ public class HotspotSelector {
         Map<String, Double> jobScoreMap = buildJobScoreMap(candidates);
         VehicleRoutingProblem vrp = buildVrp(candidates, filteredMatrix, budgetMeters);
 
-        List<String> visitOrder = solveAndExtract(vrp, jobScoreMap);
+        double dynamicSegmentDist = calculateDynamicSegmentDistance(budgetMeters);
+        List<String> visitOrder = solveAndExtract(vrp, jobScoreMap, dynamicSegmentDist);
 
         return orderCandidates(candidates, visitOrder);
     }
 
-    List<String> solveAndExtract(VehicleRoutingProblem vrp, Map<String, Double> jobScoreMap) {
+    List<String> solveAndExtract(VehicleRoutingProblem vrp, Map<String, Double> jobScoreMap, double maxSegmentDist) {
         SolutionCostCalculator objectiveFunction = buildObjectiveFunction(vrp, jobScoreMap);
 
         StateManager stateManager = new StateManager(vrp);
         ConstraintManager constraintManager = new ConstraintManager(vrp, stateManager);
         constraintManager.addTimeWindowConstraint();
-        constraintManager.addConstraint(buildMaxSegmentConstraint(vrp), ConstraintManager.Priority.HIGH);
+        constraintManager.addConstraint(buildMaxSegmentConstraint(vrp, maxSegmentDist), ConstraintManager.Priority.HIGH);
 
         VehicleRoutingAlgorithm algorithm = Jsprit.Builder.newInstance(vrp)
                 .setObjectiveFunction(objectiveFunction)
@@ -140,18 +144,26 @@ public class HotspotSelector {
         };
     }
 
-    private HardActivityConstraint buildMaxSegmentConstraint(VehicleRoutingProblem vrp) {
+    private HardActivityConstraint buildMaxSegmentConstraint(VehicleRoutingProblem vrp, double maxSegmentDist) {
         return (JobInsertionContext iFacts, TourActivity prevAct,
                 TourActivity newAct, TourActivity nextAct, double prevActDepTime) -> {
             double dist = vrp.getTransportCosts().getTransportCost(
                     prevAct.getLocation(), newAct.getLocation(),
                     prevActDepTime, iFacts.getRoute().getDriver(), iFacts.getNewVehicle());
 
-            if (dist > MAX_SEGMENT_DISTANCE) {
+            if (dist > maxSegmentDist) {
                 return HardActivityConstraint.ConstraintsStatus.NOT_FULFILLED;
             }
             return HardActivityConstraint.ConstraintsStatus.FULFILLED;
         };
+    }
+
+    int calculateDynamicCandidates(int budgetMeters) {
+        return Math.clamp((int)(budgetMeters * CANDIDATES_PER_METER), MIN_CANDIDATES, MAX_CANDIDATES_CAP);
+    }
+
+    double calculateDynamicSegmentDistance(int budgetMeters) {
+        return budgetMeters * SEGMENT_DISTANCE_RATIO;
     }
 
     VehicleRoutingProblem buildVrp(List<HotspotInfo> candidates, double[][] distMatrix, int budgetMeters) {

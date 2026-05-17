@@ -187,7 +187,7 @@ class HotspotSelectorTest {
         VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 5000);
 
         // when
-        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap);
+        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap, 1250.0);
 
         // then
         assertThat(visitOrder).isNotEmpty();
@@ -218,7 +218,7 @@ class HotspotSelectorTest {
         VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 500);
 
         // when
-        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap);
+        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap, 125.0);
 
         // then
         assertThat(visitOrder.size()).isLessThan(3);
@@ -249,5 +249,47 @@ class HotspotSelectorTest {
         // then
         assertThat(allVisitedCost).isGreaterThan(0);
         assertThat(allVisitedCost).isLessThan(0.90 * 2_000);
+    }
+
+    @Test
+    @DisplayName("distance 2000m 이면 후보 수가 3개여야 한다.")
+    void dynamicCandidates_shortDistance_returns3() {
+        // given / when
+        int candidates = hotspotSelector.calculateDynamicCandidates(2000);
+
+        // then
+        assertThat(candidates).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("distance 5000m 이면 후보 수가 7개여야 한다.")
+    void dynamicCandidates_mediumDistance_returns7() {
+        // given / when
+        int candidates = hotspotSelector.calculateDynamicCandidates(5000);
+
+        // then
+        assertThat(candidates).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("distance 10000m 이면 후보 수가 10개(상한)여야 한다.")
+    void dynamicCandidates_longDistance_cappedAt10() {
+        // given / when
+        int candidates = hotspotSelector.calculateDynamicCandidates(10000);
+
+        // then
+        assertThat(candidates).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("MAX_SEGMENT_DISTANCE는 budget의 25%여야 한다.")
+    void dynamicSegmentDistance_is25PercentOfBudget() {
+        // given / when
+        double segDist5k = hotspotSelector.calculateDynamicSegmentDistance(5000);
+        double segDist2k = hotspotSelector.calculateDynamicSegmentDistance(2000);
+
+        // then
+        assertThat(segDist5k).isEqualTo(1250.0);
+        assertThat(segDist2k).isEqualTo(500.0);
     }
 }
