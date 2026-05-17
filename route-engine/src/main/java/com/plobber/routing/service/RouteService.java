@@ -31,8 +31,10 @@ public class RouteService {
     public RouteResult calculateRoute(RouteRequest requestDto) {
         validateRequest(requestDto);
 
-        List<HotspotInfo> selectedHotspots = hotspotSelector.selectOptimalRoute(
-                requestDto.lat(), requestDto.lon(), requestDto.distance());
+        // JSprit 핫스팟 경유 알고리즘 임시 주석 처리 (V2 마이그레이션 전까지 우회)
+        // List<HotspotInfo> selectedHotspots = hotspotSelector.selectOptimalRoute(
+        //         requestDto.lat(), requestDto.lon(), requestDto.distance());
+        List<HotspotInfo> selectedHotspots = java.util.Collections.emptyList();
 
         CustomModel customModel = customModelBuilder.build(requestDto.mode());
 

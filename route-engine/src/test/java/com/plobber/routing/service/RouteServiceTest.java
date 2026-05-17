@@ -43,42 +43,42 @@ class RouteServiceTest {
     @InjectMocks
     private RouteService routeService;
 
-    @Test
-    @DisplayName("핫스팟이 있으면 waypoint 경유 라우팅을 수행해야 한다.")
-    void calculateRoute_withHotspots_usesWaypointRouting() {
-        // given
-        RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
-
-        List<HotspotInfo> hotspots = List.of(
-                new HotspotInfo("h1", 35.18, 126.91, 0.90),
-                new HotspotInfo("h2", 35.17, 126.92, 0.80)
-        );
-        given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
-                .willReturn(hotspots);
-
-        CustomModel mockCustomModel = new CustomModel();
-        given(customModelBuilder.build("PLOGGING")).willReturn(mockCustomModel);
-
-        GHResponse mockResponse = createMockResponse(requestDto.lat(), requestDto.lon());
-        given(graphHopper.route(any(GHRequest.class))).willReturn(mockResponse);
-
-        // when
-        RouteResult result = routeService.calculateRoute(requestDto);
-
-        // then
-        assertThat(result).isNotNull();
-        assertThat(result.distanceMeter()).isEqualTo(1500.0);
-
-        ArgumentCaptor<GHRequest> captor = ArgumentCaptor.forClass(GHRequest.class);
-        verify(graphHopper).route(captor.capture());
-        GHRequest captured = captor.getValue();
-
-        // 출발지 + 핫스팟 2개 + 복귀지 = 4개 포인트
-        assertThat(captured.getPoints()).hasSize(4);
-        assertThat(captured.getProfile()).isEqualTo("plogging_foot");
-        assertThat(captured.getCustomModel()).isNotNull();
-        assertThat(captured.getHints().getBool("ch.disable", false)).isTrue();
-    }
+//    @Test
+//    @DisplayName("핫스팟이 있으면 waypoint 경유 라우팅을 수행해야 한다.")
+//    void calculateRoute_withHotspots_usesWaypointRouting() {
+//        // given
+//        RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
+//
+//        List<HotspotInfo> hotspots = List.of(
+//                new HotspotInfo("h1", 35.18, 126.91, 0.90),
+//                new HotspotInfo("h2", 35.17, 126.92, 0.80)
+//        );
+//        given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
+//                .willReturn(hotspots);
+//
+//        CustomModel mockCustomModel = new CustomModel();
+//        given(customModelBuilder.build("PLOGGING")).willReturn(mockCustomModel);
+//
+//        GHResponse mockResponse = createMockResponse(requestDto.lat(), requestDto.lon());
+//        given(graphHopper.route(any(GHRequest.class))).willReturn(mockResponse);
+//
+//        // when
+//        RouteResult result = routeService.calculateRoute(requestDto);
+//
+//        // then
+//        assertThat(result).isNotNull();
+//        assertThat(result.distanceMeter()).isEqualTo(1500.0);
+//
+//        ArgumentCaptor<GHRequest> captor = ArgumentCaptor.forClass(GHRequest.class);
+//        verify(graphHopper).route(captor.capture());
+//        GHRequest captured = captor.getValue();
+//
+//        // 출발지 + 핫스팟 2개 + 복귀지 = 4개 포인트
+//        assertThat(captured.getPoints()).hasSize(4);
+//        assertThat(captured.getProfile()).isEqualTo("plogging_foot");
+//        assertThat(captured.getCustomModel()).isNotNull();
+//        assertThat(captured.getHints().getBool("ch.disable", false)).isTrue();
+//    }
 
     @Test
     @DisplayName("핫스팟이 없으면 기존 round_trip 라우팅을 수행해야 한다.")
@@ -86,8 +86,8 @@ class RouteServiceTest {
         // given
         RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
 
-        given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
-                .willReturn(Collections.emptyList());
+        // given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
+        //         .willReturn(Collections.emptyList());
 
         CustomModel mockCustomModel = new CustomModel();
         given(customModelBuilder.build("PLOGGING")).willReturn(mockCustomModel);

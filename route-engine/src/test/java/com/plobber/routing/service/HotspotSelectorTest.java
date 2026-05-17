@@ -187,7 +187,8 @@ class HotspotSelectorTest {
         VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 5000);
 
         // when
-        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap, 1250.0);
+        HotspotSelector.SolverResult solverResult = hotspotSelector.solveAndExtract(vrp, jobScoreMap, 1250.0);
+        List<String> visitOrder = solverResult.visitOrder();
 
         // then
         assertThat(visitOrder).isNotEmpty();
@@ -218,7 +219,8 @@ class HotspotSelectorTest {
         VehicleRoutingProblem vrp = hotspotSelector.buildVrp(candidates, distMatrix, 500);
 
         // when
-        List<String> visitOrder = hotspotSelector.solveAndExtract(vrp, jobScoreMap, 125.0);
+        HotspotSelector.SolverResult solverResult = hotspotSelector.solveAndExtract(vrp, jobScoreMap, 125.0);
+        List<String> visitOrder = solverResult.visitOrder();
 
         // then
         assertThat(visitOrder.size()).isLessThan(3);
