@@ -11,6 +11,9 @@ class RouteEngineApplicationTests {
     @MockitoBean
     private GraphHopper graphHopper;
 
+    @MockitoBean
+    private javax.sql.DataSource dataSource;
+
 	@Test
 	void contextLoads() {
 	}
