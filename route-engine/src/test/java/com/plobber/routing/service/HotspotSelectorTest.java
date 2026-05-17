@@ -225,7 +225,7 @@ class HotspotSelectorTest {
     }
 
     @Test
-    @DisplayName("목적 함수는 미방문 핫스팟에 score × 10000 패널티를 부과해야 한다.")
+    @DisplayName("목적 함수는 미방문 핫스팟에 score × PENALTY_MULTIPLIER 패널티를 부과해야 한다.")
     void buildObjectiveFunction_penalizesUnassignedByScore() {
         // given
         List<HotspotInfo> candidates = List.of(
@@ -248,6 +248,6 @@ class HotspotSelectorTest {
 
         // then
         assertThat(allVisitedCost).isGreaterThan(0);
-        assertThat(allVisitedCost).isLessThan(0.90 * 10_000);
+        assertThat(allVisitedCost).isLessThan(0.90 * 2_000);
     }
 }

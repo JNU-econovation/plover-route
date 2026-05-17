@@ -4,11 +4,15 @@ import com.graphhopper.jsprit.core.algorithm.VehicleRoutingAlgorithm;
 import com.graphhopper.jsprit.core.algorithm.box.Jsprit;
 import com.graphhopper.jsprit.core.algorithm.recreate.Insertion;
 import com.graphhopper.jsprit.core.algorithm.ruin.Ruin;
+import com.graphhopper.jsprit.core.algorithm.state.StateManager;
 import com.graphhopper.jsprit.core.problem.Location;
 import com.graphhopper.jsprit.core.problem.VehicleRoutingProblem;
+import com.graphhopper.jsprit.core.problem.constraint.ConstraintManager;
+import com.graphhopper.jsprit.core.problem.constraint.HardActivityConstraint;
 import com.graphhopper.jsprit.core.problem.cost.VehicleRoutingTransportCosts;
 import com.graphhopper.jsprit.core.problem.job.Job;
 import com.graphhopper.jsprit.core.problem.job.Service;
+import com.graphhopper.jsprit.core.problem.misc.JobInsertionContext;
 import com.graphhopper.jsprit.core.problem.solution.SolutionCostCalculator;
 import com.graphhopper.jsprit.core.problem.solution.VehicleRoutingProblemSolution;
 import com.graphhopper.jsprit.core.problem.solution.route.VehicleRoute;
@@ -32,11 +36,12 @@ import java.util.Map;
 @org.springframework.stereotype.Service
 public class HotspotSelector {
 
-    private static final int MAX_CANDIDATES = 15;
-    private static final double SEARCH_RADIUS_RATIO = 0.4;
+    private static final int MAX_CANDIDATES = 5;
+    private static final double SEARCH_RADIUS_RATIO = 0.25;
     private static final double WALKING_SPEED_MPS = 1.39;
-    private static final double PENALTY_MULTIPLIER = 1000.0;
+    private static final double PENALTY_MULTIPLIER = 2000.0;
     private static final int MAX_ITERATIONS = 100;
+    private static final double MAX_SEGMENT_DISTANCE = 1000.0;
 
     private final HotspotRepository hotspotRepository;
     private final DistanceMatrixService distanceMatrixService;
@@ -77,8 +82,14 @@ public class HotspotSelector {
     List<String> solveAndExtract(VehicleRoutingProblem vrp, Map<String, Double> jobScoreMap) {
         SolutionCostCalculator objectiveFunction = buildObjectiveFunction(vrp, jobScoreMap);
 
+        StateManager stateManager = new StateManager(vrp);
+        ConstraintManager constraintManager = new ConstraintManager(vrp, stateManager);
+        constraintManager.addTimeWindowConstraint();
+        constraintManager.addConstraint(buildMaxSegmentConstraint(vrp), ConstraintManager.Priority.HIGH);
+
         VehicleRoutingAlgorithm algorithm = Jsprit.Builder.newInstance(vrp)
                 .setObjectiveFunction(objectiveFunction)
+                .setStateAndConstraintManager(stateManager, constraintManager)
                 .addRuinOperator(0.3, Ruin.radial(0.3))
                 .addRuinOperator(0.2, Ruin.random(0.3))
                 .addRuinOperator(0.2, Ruin.cluster())
@@ -126,6 +137,20 @@ public class HotspotSelector {
             }
 
             return transportCost + unassignedPenalty;
+        };
+    }
+
+    private HardActivityConstraint buildMaxSegmentConstraint(VehicleRoutingProblem vrp) {
+        return (JobInsertionContext iFacts, TourActivity prevAct,
+                TourActivity newAct, TourActivity nextAct, double prevActDepTime) -> {
+            double dist = vrp.getTransportCosts().getTransportCost(
+                    prevAct.getLocation(), newAct.getLocation(),
+                    prevActDepTime, iFacts.getRoute().getDriver(), iFacts.getNewVehicle());
+
+            if (dist > MAX_SEGMENT_DISTANCE) {
+                return HardActivityConstraint.ConstraintsStatus.NOT_FULFILLED;
+            }
+            return HardActivityConstraint.ConstraintsStatus.FULFILLED;
         };
     }
 
