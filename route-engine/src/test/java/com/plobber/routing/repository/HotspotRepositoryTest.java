@@ -89,4 +89,77 @@ class HotspotRepositoryTest {
         // then
         assertThat(probability).isEqualTo(0.0);
     }
+
+    @Test
+    @DisplayName("반경 내 핫스팟을 점수 내림차순으로 반환해야 한다.")
+    void findTopNearby_returnsHotspotsSortedByScore() {
+        // given
+        HotspotRepositoryImpl.Hotspot low = new HotspotRepositoryImpl.Hotspot(35.16, 35.18, 126.90, 126.92, 0.30);
+        HotspotRepositoryImpl.Hotspot high = new HotspotRepositoryImpl.Hotspot(35.17, 35.19, 126.91, 126.93, 0.95);
+        HotspotRepositoryImpl.Hotspot mid = new HotspotRepositoryImpl.Hotspot(35.15, 35.17, 126.89, 126.91, 0.60);
+
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Arrays.asList(low, high, mid));
+
+        // when
+        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.91, 2000, 10);
+
+        // then
+        assertThat(results).isNotEmpty();
+        assertThat(results.get(0).score()).isEqualTo(0.95);
+        for (int i = 1; i < results.size(); i++) {
+            assertThat(results.get(i).score()).isLessThanOrEqualTo(results.get(i - 1).score());
+        }
+    }
+
+    @Test
+    @DisplayName("limit 수만큼만 핫스팟을 반환해야 한다.")
+    void findTopNearby_respectsLimit() {
+        // given
+        HotspotRepositoryImpl.Hotspot h1 = new HotspotRepositoryImpl.Hotspot(35.16, 35.18, 126.90, 126.92, 0.90);
+        HotspotRepositoryImpl.Hotspot h2 = new HotspotRepositoryImpl.Hotspot(35.17, 35.19, 126.91, 126.93, 0.80);
+        HotspotRepositoryImpl.Hotspot h3 = new HotspotRepositoryImpl.Hotspot(35.15, 35.17, 126.89, 126.91, 0.70);
+
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Arrays.asList(h1, h2, h3));
+
+        // when
+        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.91, 2000, 2);
+
+        // then
+        assertThat(results).hasSizeLessThanOrEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("반경 밖의 핫스팟은 결과에 포함하지 않아야 한다.")
+    void findTopNearby_excludesOutOfRange() {
+        // given
+        HotspotRepositoryImpl.Hotspot nearby = new HotspotRepositoryImpl.Hotspot(35.17, 35.18, 126.90, 126.91, 0.85);
+        HotspotRepositoryImpl.Hotspot farAway = new HotspotRepositoryImpl.Hotspot(36.00, 36.01, 127.50, 127.51, 0.99);
+
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Arrays.asList(nearby, farAway));
+
+        // when
+        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.905, 1000, 10);
+
+        // then
+        assertThat(results).allSatisfy(h ->
+            assertThat(h.score()).isNotEqualTo(0.99)
+        );
+    }
+
+    @Test
+    @DisplayName("캐시에 데이터가 없으면 빈 리스트를 반환해야 한다.")
+    void findTopNearby_whenNoData_returnsEmpty() {
+        // given
+        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
+                .willReturn(Collections.emptyList());
+
+        // when
+        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.91, 2000, 10);
+
+        // then
+        assertThat(results).isEmpty();
+    }
 }

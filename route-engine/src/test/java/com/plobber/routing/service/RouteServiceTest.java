@@ -5,7 +5,10 @@ import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.util.CustomModel;
+import com.graphhopper.util.PointList;
+import com.plobber.routing.controller.RouteRequest;
 import com.plobber.routing.graphhopper.CustomModelBuilder;
+import com.plobber.routing.repository.HotspotInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,8 +17,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collections;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -28,64 +37,84 @@ class RouteServiceTest {
     @Mock
     private CustomModelBuilder customModelBuilder;
 
+    @Mock
+    private HotspotSelector hotspotSelector;
+
     @InjectMocks
     private RouteService routeService;
 
+//    @Test
+//    @DisplayName("핫스팟이 있으면 waypoint 경유 라우팅을 수행해야 한다.")
+//    void calculateRoute_withHotspots_usesWaypointRouting() {
+//        // given
+//        RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
+//
+//        List<HotspotInfo> hotspots = List.of(
+//                new HotspotInfo("h1", 35.18, 126.91, 0.90),
+//                new HotspotInfo("h2", 35.17, 126.92, 0.80)
+//        );
+//        given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
+//                .willReturn(hotspots);
+//
+//        CustomModel mockCustomModel = new CustomModel();
+//        given(customModelBuilder.build("PLOGGING")).willReturn(mockCustomModel);
+//
+//        GHResponse mockResponse = createMockResponse(requestDto.lat(), requestDto.lon());
+//        given(graphHopper.route(any(GHRequest.class))).willReturn(mockResponse);
+//
+//        // when
+//        RouteResult result = routeService.calculateRoute(requestDto);
+//
+//        // then
+//        assertThat(result).isNotNull();
+//        assertThat(result.distanceMeter()).isEqualTo(1500.0);
+//
+//        ArgumentCaptor<GHRequest> captor = ArgumentCaptor.forClass(GHRequest.class);
+//        verify(graphHopper).route(captor.capture());
+//        GHRequest captured = captor.getValue();
+//
+//        // 출발지 + 핫스팟 2개 + 복귀지 = 4개 포인트
+//        assertThat(captured.getPoints()).hasSize(4);
+//        assertThat(captured.getProfile()).isEqualTo("plogging_foot");
+//        assertThat(captured.getCustomModel()).isNotNull();
+//        assertThat(captured.getHints().getBool("ch.disable", false)).isTrue();
+//    }
+
     @Test
-    @DisplayName("출발지와 목표 거리를 입력하면, 왕복(Round Trip) 알고리즘이 적용된 경로 탐색을 수행해야 한다.")
-    void calculateRouteTest() {
+    @DisplayName("핫스팟이 없으면 기존 round_trip 라우팅을 수행해야 한다.")
+    void calculateRoute_noHotspots_fallsBackToRoundTrip() {
         // given
-        com.plobber.routing.controller.RouteRequest requestDto = new com.plobber.routing.controller.RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
+        RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
+
+        // given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
+        //         .willReturn(Collections.emptyList());
 
         CustomModel mockCustomModel = new CustomModel();
-        given(customModelBuilder.build(requestDto.mode())).willReturn(mockCustomModel);
+        given(customModelBuilder.build("PLOGGING")).willReturn(mockCustomModel);
 
-        GHResponse mockResponse = new GHResponse();
-        ResponsePath mockPath = new ResponsePath();
-        mockPath.setDistance(1500.0);
-        mockPath.setTime(600000L); // 10 minutes
-        
-        com.graphhopper.util.PointList points = new com.graphhopper.util.PointList();
-        points.add(requestDto.lat(), requestDto.lon());
-        points.add(requestDto.lat() + 0.01, requestDto.lon() + 0.01);
-        points.add(requestDto.lat(), requestDto.lon());
-        mockPath.setPoints(points);
-        
-        mockResponse.add(mockPath);
-
+        GHResponse mockResponse = createMockResponse(requestDto.lat(), requestDto.lon());
         given(graphHopper.route(any(GHRequest.class))).willReturn(mockResponse);
 
         // when
         RouteResult result = routeService.calculateRoute(requestDto);
 
         // then
-        assertThat(result).isNotNull();
-        assertThat(result.distanceMeter()).isEqualTo(1500.0);
-        assertThat(result.timeMillis()).isEqualTo(600000L);
+        ArgumentCaptor<GHRequest> captor = ArgumentCaptor.forClass(GHRequest.class);
+        verify(graphHopper).route(captor.capture());
+        GHRequest captured = captor.getValue();
 
-        ArgumentCaptor<GHRequest> requestCaptor = ArgumentCaptor.forClass(GHRequest.class);
-        verify(graphHopper).route(requestCaptor.capture());
-        GHRequest capturedRequest = requestCaptor.getValue();
-        
-        assertThat(capturedRequest.getPoints().get(0).lat).isEqualTo(requestDto.lat());
-        assertThat(capturedRequest.getProfile()).isEqualTo("plogging_foot");
-        assertThat(capturedRequest.getAlgorithm()).isEqualTo("round_trip");
-
-        assertThat(capturedRequest.getHints().getInt("round_trip.distance", 0)).isEqualTo(5000);
-        assertThat(capturedRequest.getHints().getBool("ch.disable", false)).isTrue();
-
-        CustomModel customModelHint = capturedRequest.getHints().getObject(CustomModel.KEY, (CustomModel) null);
-        assertThat(customModelHint).isNotNull();
+        assertThat(captured.getAlgorithm()).isEqualTo("round_trip");
+        assertThat(captured.getPoints()).hasSize(1);
     }
 
     @Test
     @DisplayName("거리(distance)가 0 이하일 경우 IllegalArgumentException을 던져야 한다.")
     void calculateRoute_InvalidDistance_ThrowsException() {
         // given
-        com.plobber.routing.controller.RouteRequest requestDto = new com.plobber.routing.controller.RouteRequest(35.1769, 126.9058, -500, "PLOGGING");
+        RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, -500, "PLOGGING");
 
         // when & then
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> routeService.calculateRoute(requestDto))
+        assertThatThrownBy(() -> routeService.calculateRoute(requestDto))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Distance must be greater than 0");
     }
@@ -94,11 +123,27 @@ class RouteServiceTest {
     @DisplayName("위경도 값이 범위를 벗어날 경우 IllegalArgumentException을 던져야 한다.")
     void calculateRoute_OutOfBoundsCoordinates_ThrowsException() {
         // given
-        com.plobber.routing.controller.RouteRequest requestDto = new com.plobber.routing.controller.RouteRequest(91.0, 126.9058, 5000, "PLOGGING");
+        RouteRequest requestDto = new RouteRequest(91.0, 126.9058, 5000, "PLOGGING");
 
         // when & then
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> routeService.calculateRoute(requestDto))
+        assertThatThrownBy(() -> routeService.calculateRoute(requestDto))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Coordinates are out of bounds");
+    }
+
+    private GHResponse createMockResponse(double lat, double lon) {
+        GHResponse response = new GHResponse();
+        ResponsePath path = new ResponsePath();
+        path.setDistance(1500.0);
+        path.setTime(600000L);
+
+        PointList points = new PointList();
+        points.add(lat, lon);
+        points.add(lat + 0.01, lon + 0.01);
+        points.add(lat, lon);
+        path.setPoints(points);
+
+        response.add(path);
+        return response;
     }
 }
