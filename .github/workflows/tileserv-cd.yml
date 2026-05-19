@@ -1,0 +1,40 @@
+name: TileServ CD
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'tileserv/**'
+      - '.github/workflows/tileserv-cd.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        with:
+          host: ${{ secrets.TILESERV_EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.TILESERV_EC2_SSH_KEY }}
+          envs: DB_URL,DB_USER,DB_PASSWORD
+          script: |
+            cd ~/plover-route
+            git pull origin main
+
+            cd tileserv
+
+            # JDBC URL → libpq URL 변환 + 인증 정보 조합
+            PG_HOST=$(echo ${DB_URL} | sed 's|jdbc:postgresql://||')
+
+            cat > .env <<EOF
+            DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${PG_HOST}
+            EOF
+
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
