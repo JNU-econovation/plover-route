@@ -2,7 +2,7 @@ services:
   # 클라이언트 지도 렌더링을 위한 실시간 공간 데이터(벡터 타일) 제공 서버
   # Martin: MapLibre 재단이 관리하는 Rust 기반 고성능 타일 서버
   martin:
-    image: ghcr.io/maplibre/martin:v1.9.1
+    image: ghcr.io/maplibre/martin:1.9.1
     container_name: geoai_martin
     ports:
       - "3000:3000"
