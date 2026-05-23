@@ -20,9 +20,14 @@ public class GraphHopperConfig {
             @Value("${graphhopper.graph.location:target/south-korea-routing-graph-cache}") String graphCacheLocation,
             @Value("${graphhopper.init:true}") boolean init
     ) {
+        com.graphhopper.GraphHopperConfig ghConfig = new com.graphhopper.GraphHopperConfig();
+        ghConfig.putObject("datareader.file", osmFilePath);
+        ghConfig.putObject("graph.location", graphCacheLocation);
+        ghConfig.putObject("graph.dataaccess", "MMAP");
+        ghConfig.putObject("import.osm.ignored_highways", "");
+
         GraphHopper hopper = new GraphHopper();
-        hopper.setOSMFile(osmFilePath);
-        hopper.setGraphHopperLocation(graphCacheLocation);
+        hopper.init(ghConfig);
 
         CustomModel footBaseModel = new CustomModel();
         footBaseModel.addToSpeed(com.graphhopper.json.Statement.If("true", com.graphhopper.json.Statement.Op.LIMIT, "5"));
