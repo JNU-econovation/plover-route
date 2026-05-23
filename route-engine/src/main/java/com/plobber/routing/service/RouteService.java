@@ -76,8 +76,13 @@ public class RouteService {
         List<Candidate> allCandidates = new ArrayList<>();
         GHPoint startPoint = new GHPoint(requestDto.lat(), requestDto.lon());
 
+        long baseSeed = Double.doubleToLongBits(requestDto.lat()) ^ 
+                        Double.doubleToLongBits(requestDto.lon()) ^ 
+                        Double.doubleToLongBits(requestDto.distance()) ^ 
+                        java.time.LocalDate.now().hashCode();
+
         for (int i = 0; i < MONTE_CARLO_SAMPLES; i++) {
-            long seed = (long) (Math.random() * 1000);
+            long seed = baseSeed + i;
             GHRequest request = buildRoundTripRequest(requestDto, customModel, seed);
             try {
                 GHResponse response = graphHopper.route(request);
@@ -126,11 +131,26 @@ public class RouteService {
             }
         }
 
-        return selected.stream()
+        List<Candidate> finalRoutes = selected.stream()
                 .limit(MAX_RECOMMENDED_ROUTES)
+                .collect(Collectors.toList());
+
+        double absoluteDensity = finalRoutes.isEmpty() ? 1.0 : finalRoutes.get(0).score();
+        int maxScoreLimit;
+        if (absoluteDensity < 1.05) {
+            maxScoreLimit = 79;
+        } else if (absoluteDensity < 1.15) {
+            maxScoreLimit = 89;
+        } else if (absoluteDensity < 1.30) {
+            maxScoreLimit = 95;
+        } else {
+            maxScoreLimit = 98;
+        }
+
+        return finalRoutes.stream()
                 .map(c -> {
                     int ploggingScore = (scoreDiff > 1e-6)
-                            ? (int) (BASELINE_PLOGGING_SCORE + (c.score() - minScore) / scoreDiff * (MAXIMUM_PLOGGING_SCORE - BASELINE_PLOGGING_SCORE))
+                            ? (int) (BASELINE_PLOGGING_SCORE + (c.score() - minScore) / scoreDiff * (maxScoreLimit - BASELINE_PLOGGING_SCORE))
                             : NEUTRAL_PLOGGING_SCORE;
                     return new RouteResult(
                             c.path().getDistance(),
