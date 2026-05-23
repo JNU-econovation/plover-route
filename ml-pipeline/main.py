@@ -106,5 +106,20 @@ def visualize_hotspot(
     )
     visualizer.render()
 
+@app.command()
+def build_tiles(
+    bucket: str = typer.Option(None, help="AWS S3 버킷명 (생략 시 .env의 AWS_S3_BUCKET 사용)")
+):
+    from src.tile_builder import TilePipelineBuilder
+    
+    try:
+        builder = TilePipelineBuilder(config=config, bucket=bucket)
+        builder.execute()
+        typer.secho("PMTiles compilation and deployment successfully completed.", fg=typer.colors.GREEN)
+    except Exception as e:
+        typer.secho(f"Error during tile build pipeline: {e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
 if __name__ == "__main__":
     app()
+

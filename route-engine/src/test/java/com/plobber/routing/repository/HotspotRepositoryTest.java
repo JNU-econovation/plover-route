@@ -1,21 +1,28 @@
 package com.plobber.routing.repository;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class HotspotRepositoryTest {
@@ -23,143 +30,136 @@ class HotspotRepositoryTest {
     @Mock
     private JdbcTemplate jdbcTemplate;
 
-    @InjectMocks
-    private HotspotRepositoryImpl hotspotRepository;
+    @Mock
+    private ResultSet resultSet;
 
-    @Test
-    @DisplayName("캐시된 데이터 중 좌표를 포함하는 핫스팟이 있으면 그 점수를 반환해야 한다.")
-    void findProbabilityByPoint_whenInsideHotspot_ReturnsScore() {
-        // given
-        HotspotRepositoryImpl.Hotspot hotspot1 = new HotspotRepositoryImpl.Hotspot(37.0, 38.0, 126.0, 127.0, 0.85);
-        HotspotRepositoryImpl.Hotspot hotspot2 = new HotspotRepositoryImpl.Hotspot(35.0, 36.0, 128.0, 129.0, 0.40);
-        
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Arrays.asList(hotspot1, hotspot2));
+    private HotspotRepositoryImpl createAndInit() throws SQLException {
+        HotspotRepositoryImpl repo = new HotspotRepositoryImpl(jdbcTemplate);
 
-        // when
-        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
+        doAnswer(invocation -> {
+            RowCallbackHandler handler = invocation.getArgument(1);
 
-        // then
-        assertThat(probability).isEqualTo(0.85);
+            when(resultSet.getLong("osm_id")).thenReturn(100L);
+            when(resultSet.getDouble("trash_score")).thenReturn(0.75);
+            handler.processRow(resultSet);
+
+            when(resultSet.getLong("osm_id")).thenReturn(200L);
+            when(resultSet.getDouble("trash_score")).thenReturn(0.42);
+            handler.processRow(resultSet);
+
+            when(resultSet.getLong("osm_id")).thenReturn(300L);
+            when(resultSet.getDouble("trash_score")).thenReturn(0.0);
+            handler.processRow(resultSet);
+
+            return null;
+        }).when(jdbcTemplate).query(anyString(), any(RowCallbackHandler.class));
+
+        repo.init();
+        return repo;
     }
 
-    @Test
-    @DisplayName("좌표가 여러 핫스팟에 겹칠 경우 가장 높은 점수를 반환해야 한다.")
-    void findProbabilityByPoint_whenOverlapping_ReturnsMaxScore() {
-        // given
-        HotspotRepositoryImpl.Hotspot hotspot1 = new HotspotRepositoryImpl.Hotspot(37.0, 38.0, 126.0, 127.0, 0.50);
-        HotspotRepositoryImpl.Hotspot hotspot2 = new HotspotRepositoryImpl.Hotspot(37.0, 38.0, 126.0, 127.0, 0.95);
-        
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Arrays.asList(hotspot1, hotspot2));
+    @Nested
+    @DisplayName("init() 캐시 로딩")
+    class InitTests {
 
-        // when
-        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
+        @Test
+        @DisplayName("init()이 DB에서 올바른 SQL을 실행해야 한다.")
+        void init_executesCorrectQuery() throws SQLException {
+            createAndInit();
+            verify(jdbcTemplate).query(
+                eq("SELECT osm_id, trash_score FROM osm_edge_trash_scores"),
+                any(RowCallbackHandler.class)
+            );
+        }
 
-        // then
-        assertThat(probability).isEqualTo(0.95);
-    }
+        @Test
+        @DisplayName("DB에 데이터가 없어도 init()이 정상 완료되어야 한다.")
+        void init_withEmptyDb_completesSuccessfully() {
+            HotspotRepositoryImpl repo = new HotspotRepositoryImpl(jdbcTemplate);
 
-    @Test
-    @DisplayName("캐시된 데이터 중 좌표를 포함하는 핫스팟이 없으면 0.0을 반환해야 한다.")
-    void findProbabilityByPoint_whenOutsideHotspot_ReturnsZero() {
-        // given
-        HotspotRepositoryImpl.Hotspot hotspot = new HotspotRepositoryImpl.Hotspot(35.0, 36.0, 128.0, 129.0, 0.40);
-        
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Collections.singletonList(hotspot));
+            doAnswer(invocation -> null)
+                .when(jdbcTemplate).query(anyString(), any(RowCallbackHandler.class));
 
-        // when
-        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
-
-        // then
-        assertThat(probability).isEqualTo(0.0);
-    }
-
-    @Test
-    @DisplayName("DB에 핫스팟 데이터가 아예 없으면 0.0을 반환해야 한다.")
-    void findProbabilityByPoint_whenNoData_ReturnsZero() {
-        // given
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Collections.emptyList());
-
-        // when
-        double probability = hotspotRepository.findProbabilityByPoint(37.5, 126.5);
-
-        // then
-        assertThat(probability).isEqualTo(0.0);
-    }
-
-    @Test
-    @DisplayName("반경 내 핫스팟을 점수 내림차순으로 반환해야 한다.")
-    void findTopNearby_returnsHotspotsSortedByScore() {
-        // given
-        HotspotRepositoryImpl.Hotspot low = new HotspotRepositoryImpl.Hotspot(35.16, 35.18, 126.90, 126.92, 0.30);
-        HotspotRepositoryImpl.Hotspot high = new HotspotRepositoryImpl.Hotspot(35.17, 35.19, 126.91, 126.93, 0.95);
-        HotspotRepositoryImpl.Hotspot mid = new HotspotRepositoryImpl.Hotspot(35.15, 35.17, 126.89, 126.91, 0.60);
-
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Arrays.asList(low, high, mid));
-
-        // when
-        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.91, 2000, 10);
-
-        // then
-        assertThat(results).isNotEmpty();
-        assertThat(results.get(0).score()).isEqualTo(0.95);
-        for (int i = 1; i < results.size(); i++) {
-            assertThat(results.get(i).score()).isLessThanOrEqualTo(results.get(i - 1).score());
+            assertThatCode(repo::init).doesNotThrowAnyException();
+            assertThat(repo.findProbabilityByOsmId(999L)).isEqualTo(0.0);
         }
     }
 
-    @Test
-    @DisplayName("limit 수만큼만 핫스팟을 반환해야 한다.")
-    void findTopNearby_respectsLimit() {
-        // given
-        HotspotRepositoryImpl.Hotspot h1 = new HotspotRepositoryImpl.Hotspot(35.16, 35.18, 126.90, 126.92, 0.90);
-        HotspotRepositoryImpl.Hotspot h2 = new HotspotRepositoryImpl.Hotspot(35.17, 35.19, 126.91, 126.93, 0.80);
-        HotspotRepositoryImpl.Hotspot h3 = new HotspotRepositoryImpl.Hotspot(35.15, 35.17, 126.89, 126.91, 0.70);
+    @Nested
+    @DisplayName("findProbabilityByOsmId() 조회")
+    class FindProbabilityTests {
 
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Arrays.asList(h1, h2, h3));
+        @Test
+        @DisplayName("캐시된 osmId가 존재하면 해당 점수를 반환해야 한다.")
+        void whenExists_returnsScore() throws SQLException {
+            HotspotRepositoryImpl repo = createAndInit();
 
-        // when
-        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.91, 2000, 2);
+            assertThat(repo.findProbabilityByOsmId(100L)).isEqualTo(0.75);
+            assertThat(repo.findProbabilityByOsmId(200L)).isEqualTo(0.42);
+        }
 
-        // then
-        assertThat(results).hasSizeLessThanOrEqualTo(2);
+        @Test
+        @DisplayName("점수가 0.0인 도로도 정확히 0.0을 반환해야 한다.")
+        void whenScoreIsZero_returnsZero() throws SQLException {
+            HotspotRepositoryImpl repo = createAndInit();
+
+            assertThat(repo.findProbabilityByOsmId(300L)).isEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("캐시에 없는 osmId는 기본값 0.0을 반환해야 한다.")
+        void whenNotExists_returnsDefaultZero() throws SQLException {
+            HotspotRepositoryImpl repo = createAndInit();
+
+            assertThat(repo.findProbabilityByOsmId(999L)).isEqualTo(0.0);
+        }
     }
 
-    @Test
-    @DisplayName("반경 밖의 핫스팟은 결과에 포함하지 않아야 한다.")
-    void findTopNearby_excludesOutOfRange() {
-        // given
-        HotspotRepositoryImpl.Hotspot nearby = new HotspotRepositoryImpl.Hotspot(35.17, 35.18, 126.90, 126.91, 0.85);
-        HotspotRepositoryImpl.Hotspot farAway = new HotspotRepositoryImpl.Hotspot(36.00, 36.01, 127.50, 127.51, 0.99);
+    @Nested
+    @DisplayName("findTopNearby() 공간 쿼리")
+    class FindTopNearbyTests {
 
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Arrays.asList(nearby, farAway));
+        @Test
+        @DisplayName("DB 결과가 있으면 점수 내림차순으로 반환해야 한다.")
+        void whenResultsExist_returnsOrderedList() throws SQLException {
+            HotspotRepositoryImpl repo = createAndInit();
 
-        // when
-        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.905, 1000, 10);
+            HotspotInfo h1 = new HotspotInfo("h_0", 35.16, 126.90, 0.90);
+            HotspotInfo h2 = new HotspotInfo("h_1", 35.17, 126.91, 0.80);
 
-        // then
-        assertThat(results).allSatisfy(h ->
-            assertThat(h.score()).isNotEqualTo(0.99)
-        );
-    }
+            given(jdbcTemplate.query(anyString(), any(RowMapper.class), anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                    .willReturn(Arrays.asList(h1, h2));
 
-    @Test
-    @DisplayName("캐시에 데이터가 없으면 빈 리스트를 반환해야 한다.")
-    void findTopNearby_whenNoData_returnsEmpty() {
-        // given
-        given(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .willReturn(Collections.emptyList());
+            List<HotspotInfo> results = repo.findTopNearby(35.175, 126.91, 2000, 10);
 
-        // when
-        java.util.List<HotspotInfo> results = hotspotRepository.findTopNearby(35.175, 126.91, 2000, 10);
+            assertThat(results).hasSize(2);
+            assertThat(results.get(0).score()).isGreaterThan(results.get(1).score());
+        }
 
-        // then
-        assertThat(results).isEmpty();
+        @Test
+        @DisplayName("DB 결과가 없으면 빈 리스트를 반환해야 한다.")
+        void whenNoResults_returnsEmptyList() throws SQLException {
+            HotspotRepositoryImpl repo = createAndInit();
+
+            given(jdbcTemplate.query(anyString(), any(RowMapper.class), anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                    .willReturn(Collections.emptyList());
+
+            List<HotspotInfo> results = repo.findTopNearby(0.0, 0.0, 100, 5);
+
+            assertThat(results).isEmpty();
+        }
+
+        @Test
+        @DisplayName("DB 쿼리 실패 시 예외를 삼키고 빈 리스트를 반환해야 한다.")
+        void whenQueryFails_returnsEmptyList() throws SQLException {
+            HotspotRepositoryImpl repo = createAndInit();
+
+            given(jdbcTemplate.query(anyString(), any(RowMapper.class), anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                    .willThrow(new RuntimeException("DB connection lost"));
+
+            List<HotspotInfo> results = repo.findTopNearby(35.0, 126.0, 500, 3);
+
+            assertThat(results).isEmpty();
+        }
     }
 }

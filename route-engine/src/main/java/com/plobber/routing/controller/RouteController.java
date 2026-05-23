@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/route")
@@ -20,8 +21,8 @@ public class RouteController {
     }
 
     @GetMapping
-    public ResponseEntity<RouteResult> getRoute(@Valid @org.springframework.web.bind.annotation.ModelAttribute RouteRequest request) {
-        RouteResult result = routeService.calculateRoute(request);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<List<RouteResult>> getRoute(@Valid @org.springframework.web.bind.annotation.ModelAttribute RouteRequest request) {
+        List<RouteResult> results = routeService.calculateRoute(request);
+        return ResponseEntity.ok(results);
     }
 }

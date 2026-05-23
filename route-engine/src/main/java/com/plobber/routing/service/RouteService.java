@@ -10,12 +10,34 @@ import com.graphhopper.util.shapes.GHPoint;
 import com.plobber.routing.controller.RouteRequest;
 import com.plobber.routing.graphhopper.CustomModelBuilder;
 import com.plobber.routing.repository.HotspotInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class RouteService {
+
+    private static final Logger log = LoggerFactory.getLogger(RouteService.class);
+
+    private static final int MONTE_CARLO_SAMPLES = 15;
+    private static final int MAX_RECOMMENDED_ROUTES = 3;
+    
+    private static final double IDEAL_DISTANCE_TOLERANCE = 0.20;
+    private static final double RELAXED_DISTANCE_TOLERANCE = 0.40;
+    
+    private static final double IDEAL_HEADING_TOLERANCE = Math.toRadians(60);
+    private static final double RELAXED_HEADING_TOLERANCE = Math.toRadians(30);
+    private static final double NO_HEADING_TOLERANCE = 0.0;
+
+    private static final int BASELINE_PLOGGING_SCORE = 15;
+    private static final int MAXIMUM_PLOGGING_SCORE = 98;
+    private static final int NEUTRAL_PLOGGING_SCORE = 50;
+    private static final int WAYPOINT_ROUTE_SCORE = 95;
 
     private final GraphHopper graphHopper;
     private final CustomModelBuilder customModelBuilder;
@@ -28,33 +50,161 @@ public class RouteService {
         this.hotspotSelector = hotspotSelector;
     }
 
-    public RouteResult calculateRoute(RouteRequest requestDto) {
+    private record Candidate(
+        ResponsePath path,
+        long seed,
+        double score,
+        double heading
+    ) {}
+
+    public List<RouteResult> calculateRoute(RouteRequest requestDto) {
         validateRequest(requestDto);
 
-        // JSprit 핫스팟 경유 알고리즘 임시 주석 처리 (V2 마이그레이션 전까지 우회)
-        // List<HotspotInfo> selectedHotspots = hotspotSelector.selectOptimalRoute(
-        //         requestDto.lat(), requestDto.lon(), requestDto.distance());
         List<HotspotInfo> selectedHotspots = java.util.Collections.emptyList();
-
         CustomModel customModel = customModelBuilder.build(requestDto.mode());
 
-        GHRequest request;
-        if (selectedHotspots.isEmpty()) {
-            request = buildRoundTripRequest(requestDto, customModel);
+        if (!selectedHotspots.isEmpty()) {
+            GHRequest request = buildWaypointRequest(requestDto, selectedHotspots, customModel);
+            GHResponse response = graphHopper.route(request);
+            if (response.hasErrors()) {
+                throw new RuntimeException("Waypoint routing failed: " + response.getErrors().toString());
+            }
+            ResponsePath bestPath = response.getBest();
+            return List.of(new RouteResult(bestPath.getDistance(), bestPath.getTime(), encodePolyline(bestPath.getPoints()), WAYPOINT_ROUTE_SCORE));
+        }
+
+        List<Candidate> allCandidates = new ArrayList<>();
+        GHPoint startPoint = new GHPoint(requestDto.lat(), requestDto.lon());
+
+        long baseSeed = Double.doubleToLongBits(requestDto.lat()) ^ 
+                        Double.doubleToLongBits(requestDto.lon()) ^ 
+                        Double.doubleToLongBits(requestDto.distance()) ^ 
+                        java.time.LocalDate.now().hashCode();
+
+        for (int i = 0; i < MONTE_CARLO_SAMPLES; i++) {
+            long seed = baseSeed + i;
+            GHRequest request = buildRoundTripRequest(requestDto, customModel, seed);
+            try {
+                GHResponse response = graphHopper.route(request);
+                if (!response.hasErrors()) {
+                    ResponsePath path = response.getBest();
+                    double distance = path.getDistance();
+                    double weight = path.getRouteWeight();
+                    double score = (weight > 0) ? (distance / weight) : 0.0;
+                    double heading = calculateHeading(startPoint, path.getPoints());
+                    allCandidates.add(new Candidate(path, seed, score, heading));
+                }
+            } catch (Exception e) {
+                log.warn("Round trip routing iteration failed for seed={}", seed, e);
+            }
+        }
+
+        if (allCandidates.isEmpty()) {
+            throw new RuntimeException("모든 왕복 경로 생성 시도가 실패했습니다.");
+        }
+
+        double maxScore = allCandidates.stream().mapToDouble(Candidate::score).max().orElse(1.0);
+        double minScore = allCandidates.stream().mapToDouble(Candidate::score).min().orElse(0.0);
+        double scoreDiff = maxScore - minScore;
+
+        allCandidates.sort((c1, c2) -> Double.compare(c2.score(), c1.score()));
+
+        List<Candidate> selected = new ArrayList<>();
+        double targetDist = requestDto.distance();
+
+        selectDiverseCandidates(allCandidates, selected, targetDist, IDEAL_DISTANCE_TOLERANCE, IDEAL_HEADING_TOLERANCE);
+
+        if (selected.size() < MAX_RECOMMENDED_ROUTES) {
+            selectDiverseCandidates(allCandidates, selected, targetDist, IDEAL_DISTANCE_TOLERANCE, RELAXED_HEADING_TOLERANCE);
+        }
+
+        if (selected.size() < MAX_RECOMMENDED_ROUTES) {
+            selectDiverseCandidates(allCandidates, selected, targetDist, RELAXED_DISTANCE_TOLERANCE, NO_HEADING_TOLERANCE);
+        }
+
+        if (selected.size() < MAX_RECOMMENDED_ROUTES) {
+            for (Candidate c : allCandidates) {
+                if (selected.size() >= MAX_RECOMMENDED_ROUTES) break;
+                if (!selected.contains(c)) {
+                    selected.add(c);
+                }
+            }
+        }
+
+        List<Candidate> finalRoutes = selected.stream()
+                .limit(MAX_RECOMMENDED_ROUTES)
+                .collect(Collectors.toList());
+
+        double absoluteDensity = finalRoutes.isEmpty() ? 1.0 : finalRoutes.get(0).score();
+        int maxScoreLimit;
+        if (absoluteDensity < 1.05) {
+            maxScoreLimit = 79;
+        } else if (absoluteDensity < 1.15) {
+            maxScoreLimit = 89;
+        } else if (absoluteDensity < 1.30) {
+            maxScoreLimit = 95;
         } else {
-            request = buildWaypointRequest(requestDto, selectedHotspots, customModel);
+            maxScoreLimit = 98;
         }
 
-        GHResponse response = graphHopper.route(request);
+        return finalRoutes.stream()
+                .map(c -> {
+                    int ploggingScore = (scoreDiff > 1e-6)
+                            ? (int) (BASELINE_PLOGGING_SCORE + (c.score() - minScore) / scoreDiff * (maxScoreLimit - BASELINE_PLOGGING_SCORE))
+                            : NEUTRAL_PLOGGING_SCORE;
+                    return new RouteResult(
+                            c.path().getDistance(),
+                            c.path().getTime(),
+                            encodePolyline(c.path().getPoints()),
+                            ploggingScore
+                    );
+                })
+                .collect(Collectors.toList());
+    }
 
-        if (response.hasErrors()) {
-            throw new RuntimeException("Routing failed: " + response.getErrors().toString());
+    private void selectDiverseCandidates(List<Candidate> candidates, List<Candidate> selected,
+                                         double targetDistance, double distanceTolerance, double headingTolerance) {
+        for (Candidate c : candidates) {
+            if (selected.size() >= MAX_RECOMMENDED_ROUTES) break;
+            if (selected.contains(c)) continue;
+
+            double dist = c.path().getDistance();
+            if (dist < targetDistance * (1.0 - distanceTolerance) || dist > targetDistance * (1.0 + distanceTolerance)) {
+                continue;
+            }
+
+            boolean isDiverse = true;
+            for (Candidate s : selected) {
+                double diff = Math.abs(c.heading() - s.heading());
+                if (diff > Math.PI) {
+                    diff = 2 * Math.PI - diff;
+                }
+                if (diff < headingTolerance) {
+                    isDiverse = false;
+                    break;
+                }
+            }
+
+            if (isDiverse) {
+                selected.add(c);
+            }
         }
+    }
 
-        ResponsePath bestPath = response.getBest();
-        String encodedPath = encodePolyline(bestPath.getPoints());
-
-        return new RouteResult(bestPath.getDistance(), bestPath.getTime(), encodedPath);
+    private double calculateHeading(GHPoint start, PointList points) {
+        if (points.size() <= 2) return 0.0;
+        double sumLat = 0;
+        double sumLon = 0;
+        int count = 0;
+        for (int i = 1; i < points.size() - 1; i++) {
+            sumLat += points.getLat(i);
+            sumLon += points.getLon(i);
+            count++;
+        }
+        if (count == 0) return 0.0;
+        double avgLat = sumLat / count;
+        double avgLon = sumLon / count;
+        return Math.atan2(avgLon - start.getLon(), avgLat - start.getLat());
     }
 
     private GHRequest buildWaypointRequest(RouteRequest requestDto,
@@ -76,14 +226,14 @@ public class RouteService {
         return request;
     }
 
-    private GHRequest buildRoundTripRequest(RouteRequest requestDto, CustomModel customModel) {
+    private GHRequest buildRoundTripRequest(RouteRequest requestDto, CustomModel customModel, long seed) {
         GHRequest request = new GHRequest()
                 .addPoint(new GHPoint(requestDto.lat(), requestDto.lon()))
                 .setProfile("plogging_foot")
                 .setAlgorithm("round_trip");
 
         request.getHints().putObject("round_trip.distance", requestDto.distance());
-        request.getHints().putObject("round_trip.seed", (long) (Math.random() * 1000));
+        request.getHints().putObject("round_trip.seed", seed);
         request.getHints().putObject("ch.disable", true);
         request.setCustomModel(customModel);
 

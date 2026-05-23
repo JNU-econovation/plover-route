@@ -23,19 +23,9 @@ public class PloggingTagParser implements TagParser {
 
     @Override
     public void handleWayTags(int edgeId, EdgeIntAccess edgeIntAccess, ReaderWay way, IntsRef relationFlags) {
-        com.graphhopper.util.PointList pointList = way.getTag("point_list", null);
-
-        if (pointList == null || pointList.isEmpty()) {
-            trashProbEnc.setDecimal(false, edgeId, edgeIntAccess, 0.0);
-            return;
-        }
-
-        // 도로의 중간 지점 좌표를 추출하여 대표값으로 사용
-        int midIndex = pointList.size() / 2;
-        double lat = pointList.getLat(midIndex);
-        double lon = pointList.getLon(midIndex);
-
-        double prob = hotspotRepository.findProbabilityByPoint(lat, lon);
+        long osmId = way.getId();
+        
+        double prob = hotspotRepository.findProbabilityByOsmId(osmId);
 
         if (Double.isNaN(prob) || prob < 0.0) {
             prob = 0.0;

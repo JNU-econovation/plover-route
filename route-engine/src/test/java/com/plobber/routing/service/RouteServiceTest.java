@@ -86,9 +86,6 @@ class RouteServiceTest {
         // given
         RouteRequest requestDto = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
 
-        // given(hotspotSelector.selectOptimalRoute(anyDouble(), anyDouble(), anyInt()))
-        //         .willReturn(Collections.emptyList());
-
         CustomModel mockCustomModel = new CustomModel();
         given(customModelBuilder.build("PLOGGING")).willReturn(mockCustomModel);
 
@@ -96,15 +93,12 @@ class RouteServiceTest {
         given(graphHopper.route(any(GHRequest.class))).willReturn(mockResponse);
 
         // when
-        RouteResult result = routeService.calculateRoute(requestDto);
+        List<RouteResult> results = routeService.calculateRoute(requestDto);
 
         // then
-        ArgumentCaptor<GHRequest> captor = ArgumentCaptor.forClass(GHRequest.class);
-        verify(graphHopper).route(captor.capture());
-        GHRequest captured = captor.getValue();
-
-        assertThat(captured.getAlgorithm()).isEqualTo("round_trip");
-        assertThat(captured.getPoints()).hasSize(1);
+        assertThat(results).hasSize(3);
+        assertThat(results.get(0).distanceMeter()).isEqualTo(1500.0);
+        assertThat(results.get(0).ploggingScore()).isEqualTo(50);
     }
 
     @Test

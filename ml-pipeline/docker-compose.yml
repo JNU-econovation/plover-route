@@ -8,6 +8,8 @@ services:
     container_name: geoai_ml_pipeline
     volumes:
       - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
     env_file:
       - .env
     command: python main.py --help

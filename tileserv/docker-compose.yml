@@ -1,6 +1,4 @@
 services:
-  # 클라이언트 지도 렌더링을 위한 실시간 공간 데이터(벡터 타일) 제공 서버
-  # Martin: MapLibre 재단이 관리하는 Rust 기반 고성능 타일 서버
   martin:
     image: ghcr.io/maplibre/martin:1.9.1
     container_name: geoai_martin
@@ -10,7 +8,12 @@ services:
       - .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-2}
+    entrypoint: /bin/sh
+    command: -c "if [ -z \"$$AWS_S3_BUCKET\" ]; then /usr/local/bin/martin $$DATABASE_URL; else /usr/local/bin/martin $$DATABASE_URL https://$$AWS_S3_BUCKET.s3.$$AWS_DEFAULT_REGION.amazonaws.com/hotspots.pmtiles; fi"
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
