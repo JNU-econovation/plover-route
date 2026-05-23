@@ -18,11 +18,12 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           host: ${{ secrets.TILESERV_EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.TILESERV_EC2_SSH_KEY }}
-          envs: DB_URL,DB_USER,DB_PASSWORD,AWS_S3_BUCKET
+          envs: DB_URL,DB_USER,DB_PASSWORD,AWS_S3_BUCKET,AWS_DEFAULT_REGION
           script: |
             cd ~/plover-route
             git pull origin main
@@ -35,6 +36,7 @@ jobs:
             cat > .env <<EOF
             DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${PG_HOST}
             AWS_S3_BUCKET=${AWS_S3_BUCKET}
+            AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
             EOF
 
             docker compose pull

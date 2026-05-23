@@ -19,7 +19,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.12-slim-bookworm
 WORKDIR /app
 
+COPY --from=docker:latest /usr/local/bin/docker /usr/local/bin/docker
+
 COPY --from=builder /app/.venv /app/.venv
+
 COPY . /app
 
 ENV PATH="/app/.venv/bin:$PATH"
