@@ -9,6 +9,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,8 +32,8 @@ class RouteControllerTest {
         RouteRequest request = new RouteRequest(35.1769, 126.9058, 5000, "PLOGGING");
 
         String mockEncodedPath = "_p~iF~ps|U_ulLnnqC_mqNvxq`@";
-        RouteResult mockResult = new RouteResult(1500.0, 600000L, mockEncodedPath);
-        given(routeService.calculateRoute(request)).willReturn(mockResult);
+        RouteResult mockResult = new RouteResult(1500.0, 600000L, mockEncodedPath, 95);
+        given(routeService.calculateRoute(request)).willReturn(List.of(mockResult));
 
         // when & then
         mockMvc.perform(get("/api/v1/route")
@@ -40,8 +42,9 @@ class RouteControllerTest {
                 .param("distance", String.valueOf(request.distance()))
                 .param("mode", request.mode()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.distanceMeter").value(1500.0))
-                .andExpect(jsonPath("$.timeMillis").value(600000L))
-                .andExpect(jsonPath("$.encodedPath").value("_p~iF~ps|U_ulLnnqC_mqNvxq`@"));
+                .andExpect(jsonPath("$[0].distanceMeter").value(1500.0))
+                .andExpect(jsonPath("$[0].timeMillis").value(600000L))
+                .andExpect(jsonPath("$[0].encodedPath").value("_p~iF~ps|U_ulLnnqC_mqNvxq`@"))
+                .andExpect(jsonPath("$[0].ploggingScore").value(95));
     }
 }
