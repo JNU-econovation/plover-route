@@ -16,8 +16,8 @@ public class GraphHopperConfig {
     @Bean
     public GraphHopper graphHopper(
             HotspotRepository hotspotRepository,
-            @Value("${graphhopper.datareader.file:data/gwangju.osm.pbf}") String osmFilePath,
-            @Value("${graphhopper.graph.location:target/gwangju-routing-graph-cache}") String graphCacheLocation,
+            @Value("${graphhopper.datareader.file:data/south-korea-highways.osm.pbf}") String osmFilePath,
+            @Value("${graphhopper.graph.location:target/south-korea-routing-graph-cache}") String graphCacheLocation,
             @Value("${graphhopper.init:true}") boolean init
     ) {
         GraphHopper hopper = new GraphHopper();
