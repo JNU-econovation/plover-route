@@ -108,136 +108,18 @@ def visualize_hotspot(
 
 @app.command()
 def build_tiles(
-    resolution: int = typer.Option(9, help="H3 공간 압축 집계 해상도 (기본 Res 9 ~100m)"),
     bucket: str = typer.Option(None, help="AWS S3 버킷명 (생략 시 .env의 AWS_S3_BUCKET 사용)")
 ):
-    import subprocess
-    import os
-    import boto3
-    from src.postprocess_h3 import aggregate_predicted_hotspots
-    from dotenv import load_dotenv
-    from src.utils import get_data_dirs
-    
-    load_dotenv()
-    db_url = os.environ.get('DATABASE_URL')
-    if not db_url:
-        typer.secho("DATABASE_URL이 .env 파일에 설정되지 않았습니다.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-        
-    s3_bucket = bucket or os.environ.get('AWS_S3_BUCKET')
+    from src.tile_builder import TilePipelineBuilder
     
     try:
-        typer.secho("H3 집계 변환 시작...", fg=typer.colors.CYAN)
-        h3_gdf = aggregate_predicted_hotspots(db_url, resolution)
+        builder = TilePipelineBuilder(config=config, bucket=bucket)
+        builder.execute()
+        typer.secho("PMTiles compilation and deployment successfully completed.", fg=typer.colors.GREEN)
     except Exception as e:
-        typer.secho(f"H3 집계 중 에러 발생: {e}", fg=typer.colors.RED)
+        typer.secho(f"Error during tile build pipeline: {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
-        
-    _, processed_dir = get_data_dirs(config)
-    geojson_path = processed_dir / "hotspots.geojson"
-    
-    typer.secho(f"임시 GeoJSON 저장 중: {geojson_path}", fg=typer.colors.CYAN)
-    h3_gdf.to_file(geojson_path, driver='GeoJSON')
-    
-    mbtiles_name = "hotspots.mbtiles"
-    pmtiles_name = "hotspots.pmtiles"
-    mbtiles_path = processed_dir / mbtiles_name
-    pmtiles_path = processed_dir / pmtiles_name
-    
-    if mbtiles_path.exists():
-        mbtiles_path.unlink()
-    if pmtiles_path.exists():
-        pmtiles_path.unlink()
-        
-    # Step 1: jskeates/tippecanoe를 사용하여 GeoJSON -> MBTiles 컴파일
-    tippecanoe_cmd = [
-        "docker", "run", "--entrypoint", "", "--rm",
-        "-v", f"{processed_dir}:/data",
-        "jskeates/tippecanoe:latest",
-        "tippecanoe",
-        "-f",
-        "-Z4",
-        "-z15",
-        "-o", f"/data/{mbtiles_name}",
-        "-l", "hotspots",
-        "/data/hotspots.geojson"
-    ]
-    
-    typer.secho("Tippecanoe Docker로 hotspots.mbtiles 1차 컴파일 중...", fg=typer.colors.CYAN)
-    try:
-        res = subprocess.run(tippecanoe_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if res.stdout:
-            typer.secho(res.stdout, fg=typer.colors.GREEN)
-        if res.stderr:
-            typer.secho(res.stderr, fg=typer.colors.YELLOW)
-    except Exception as e:
-        typer.secho(f"Tippecanoe 1차 컴파일 중 에러 발생: {e}", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-        
-    # Step 2: protomaps/go-pmtiles를 사용하여 MBTiles -> PMTiles 고속 변환
-    convert_cmd = [
-        "docker", "run", "--rm",
-        "-v", f"{processed_dir}:/data",
-        "protomaps/go-pmtiles:latest",
-        "convert",
-        f"/data/{mbtiles_name}",
-        f"/data/{pmtiles_name}"
-    ]
-    
-    typer.secho("go-pmtiles Docker로 hotspots.pmtiles 최종 변환 중...", fg=typer.colors.CYAN)
-    try:
-        res = subprocess.run(convert_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if res.stdout:
-            typer.secho(res.stdout, fg=typer.colors.GREEN)
-        if res.stderr:
-            typer.secho(res.stderr, fg=typer.colors.YELLOW)
-        typer.secho("PMTiles 최종 컴파일 성공! 🎉", fg=typer.colors.GREEN)
-    except Exception as e:
-        typer.secho(f"go-pmtiles 변환 중 에러 발생: {e}", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-    finally:
-        if geojson_path.exists():
-            geojson_path.unlink()
-        if mbtiles_path.exists():
-            mbtiles_path.unlink()
-            
-    if not s3_bucket:
-        typer.secho("AWS_S3_BUCKET이 설정되지 않아 S3 업로드를 스킵하고 로컬 파일 컴파일로 성공 처리합니다.", fg=typer.colors.YELLOW)
-        typer.secho(f"로컬 파일 위치: {pmtiles_path}", fg=typer.colors.GREEN)
-        return
-        
-    aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
-    aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-    aws_region = os.environ.get('AWS_DEFAULT_REGION') or os.environ.get('AWS_REGION') or 'ap-northeast-2'
-    
-    if not aws_access_key or not aws_secret_key:
-        typer.secho("AWS 자격 증명(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)이 존재하지 않아 S3 업로드를 스킵합니다.", fg=typer.colors.YELLOW)
-        typer.secho(f"로컬 파일 위치: {pmtiles_path}", fg=typer.colors.GREEN)
-        return
-        
-    typer.secho(f"AWS S3 버킷 '{s3_bucket}'에 pmtiles 파일 배포 중...", fg=typer.colors.CYAN)
-    try:
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            region_name=aws_region
-        )
-        
-        s3_client.upload_file(
-            Filename=str(pmtiles_path),
-            Bucket=s3_bucket,
-            Key=pmtiles_name,
-            ExtraArgs={'ACL': 'public-read', 'ContentType': 'application/octet-stream'}
-        )
-        
-        s3_url = f"https://{s3_bucket}.s3.{aws_region}.amazonaws.com/{pmtiles_name}"
-        typer.secho(f"S3 업로드 및 배포 완료! 🚀", fg=typer.colors.GREEN)
-        typer.secho(f"공개 타일셋 URL: {s3_url}", fg=typer.colors.GREEN)
-    except Exception as e:
-        typer.secho(f"S3 업로드 중 에러 발생: {e}", fg=typer.colors.RED)
-        typer.secho("업로드는 실패했으나 로컬 PMTiles 파일은 성공적으로 확보되었습니다.", fg=typer.colors.YELLOW)
-        typer.secho(f"로컬 파일 위치: {pmtiles_path}", fg=typer.colors.GREEN)
 
 if __name__ == "__main__":
     app()
+

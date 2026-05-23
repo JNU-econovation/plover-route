@@ -3,53 +3,70 @@ import geopandas as gpd
 import pandas as pd
 import sqlalchemy
 from shapely.geometry import Polygon
+from collections import defaultdict
 from src.utils import ensure_crs, Timer
 
 def aggregate_predicted_hotspots(db_url: str, resolution: int = 9) -> gpd.GeoDataFrame:
     """
-    PostGIS DB에서 10m 격자 예측 결과(predicted_hotspots)를 읽어와 
-    H3 육각형 격자로 공간 집계(Aggregation)를 수행합니다.
+    Reads prediction grid centroids from PostGIS in memory-bounded chunks, 
+    maps them to H3 cells, and aggregates metrics streaming-style to support nationwide scales.
     """
     engine = sqlalchemy.create_engine(db_url)
     
-    with Timer("PostGIS 데이터 로딩 및 검증"):
-        query = "SELECT grid_id, geometry, trash_score FROM predicted_hotspots"
-        gdf = gpd.read_postgis(query, con=engine, geom_col="geometry")
+    # Enable server-side streaming cursor to guarantee driver-level bounded memory footprint.
+    conn = engine.connect().execution_options(stream_results=True)
+    
+    # Select only Float coordinates instead of heavy Geometry polygons to save 90% memory.
+    query = """
+        SELECT ST_X(ST_Centroid(geometry)) AS lon, 
+               ST_Y(ST_Centroid(geometry)) AS lat, 
+               trash_score 
+        FROM predicted_hotspots 
+        WHERE trash_score IS NOT NULL
+    """
+    
+    # Use streaming accumulator to bound memory usage to O(H3 cells) instead of O(Input Grids)
+    chunk_size = 200000
+    h3_accumulator = defaultdict(lambda: {"sum": 0.0, "max": 0.0, "count": 0})
+    
+    try:
+        with Timer("Nationwide-scale streaming H3 aggregation"):
+            for chunk in pd.read_sql_query(query, con=conn, chunksize=chunk_size):
+                if chunk.empty:
+                    continue
+                    
+                h3_cells = [h3.latlng_to_cell(lat, lon, resolution) for lat, lon in zip(chunk['lat'], chunk['lon'])]
+                chunk['h3_cell'] = h3_cells
+                
+                for cell, score in zip(chunk['h3_cell'], chunk['trash_score']):
+                    cell_data = h3_accumulator[cell]
+                    cell_data["sum"] += score
+                    cell_data["max"] = max(cell_data["max"], score)
+                    cell_data["count"] += 1
+    finally:
+        conn.close()
+                
+    if not h3_accumulator:
+        raise ValueError("No valid prediction data found in database.")
         
-        gdf = ensure_crs(gdf, "EPSG:4326")
-        gdf = gdf.dropna(subset=['trash_score'])
-        
-        if len(gdf) == 0:
-            raise ValueError("DB에 유효한 예측 데이터가 존재하지 않습니다.")
+    with Timer("Reconstructing unified H3 GeoDataFrame"):
+        rows = []
+        for cell, metrics in h3_accumulator.items():
+            avg_score = min(max(metrics["sum"] / metrics["count"], 0.0), 1.0)
+            max_score = min(max(metrics["max"], 0.0), 1.0)
             
-    with Timer("H3 공간 인덱스 매핑"):
-        # 중심점 산출을 위해 일시적으로 투영 좌표계(EPSG:3857) 변환
-        gdf_proj = gdf.to_crs("EPSG:3857")
-        centroids_proj = gdf_proj.geometry.centroid
-        centroids = centroids_proj.to_crs("EPSG:4326")
-        
-        gdf['h3_cell'] = [h3.latlng_to_cell(c.y, c.x, resolution) for c in centroids]
-
-    with Timer("H3 그룹별 집계 연산"):
-        agg = gdf.groupby('h3_cell').agg(
-            trash_score_avg=('trash_score', 'mean'),
-            trash_score_max=('trash_score', 'max'),
-            cell_count=('grid_id', 'count')
-        ).reset_index()
-
-        agg['trash_score_avg'] = agg['trash_score_avg'].clip(0.0, 1.0)
-        agg['trash_score_max'] = agg['trash_score_max'].clip(0.0, 1.0)
-
-    with Timer("H3 육각형 Polygon 복원"):
-        def cell_to_polygon(cell_id: str) -> Polygon:
-            boundary = h3.cell_to_boundary(cell_id)
-            # H3 (lat, lng) 경계를 Shapely (lng, lat)로 스왑
+            boundary = h3.cell_to_boundary(cell)
             coords = [(lng, lat) for lat, lng in boundary]
-            return Polygon(coords)
-
-        agg['geometry'] = agg['h3_cell'].apply(cell_to_polygon)
-        h3_gdf = gpd.GeoDataFrame(agg, geometry='geometry', crs="EPSG:4326")
+            
+            rows.append({
+                "h3_cell": cell,
+                "trash_score_avg": avg_score,
+                "trash_score_max": max_score,
+                "cell_count": metrics["count"],
+                "geometry": Polygon(coords)
+            })
+            
+        h3_gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
         
-    print(f"H3 공간 압축 집계 완료: 원본 {len(gdf)}개 격자 -> H3 {len(h3_gdf)}개 헥사곤")
+    print(f"H3 spatial aggregation completed: Streaming -> {len(h3_gdf)} hexagons")
     return h3_gdf
-
