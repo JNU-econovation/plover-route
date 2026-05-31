@@ -30,4 +30,6 @@ def test_evaluate_pu_model_dictionary():
     assert "puf_score" in metrics
     assert "recall" in metrics
     assert "roc_auc" in metrics
+    assert "pr_auc" in metrics
     assert isinstance(metrics["puf_score"], float)
+    assert isinstance(metrics["pr_auc"], float)

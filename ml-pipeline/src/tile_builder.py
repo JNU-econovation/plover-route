@@ -45,14 +45,19 @@ class TilePipelineBuilder:
             if path.exists():
                 path.unlink()
                 
+        # Apply Tippecanoe options to prevent dropping features (-pf, -pk, --drop-rate=0)
+        # Separate zoom levels (Z4-11, Z12-15, Z16-17) to optimize loading performance
         res7_cmd = [
             "docker", "run", "--entrypoint", "", "--rm",
             "-v", f"{processed_dir}:/data",
             "jskeates/tippecanoe:latest",
             "tippecanoe",
             "-f",
+            "-pf",
+            "-pk",
+            "--drop-rate=0",
             "-o", "/data/res7.mbtiles",
-            "-Z4", "-z13",
+            "-Z4", "-z11",
             "--layer=hotspots_res7", "/data/hotspots_res7.geojson"
         ]
         
@@ -62,8 +67,11 @@ class TilePipelineBuilder:
             "jskeates/tippecanoe:latest",
             "tippecanoe",
             "-f",
+            "-pf",
+            "-pk",
+            "--drop-rate=0",
             "-o", "/data/res9.mbtiles",
-            "-Z8", "-z17",
+            "-Z12", "-z15",
             "--layer=hotspots_res9", "/data/hotspots_res9.geojson"
         ]
         

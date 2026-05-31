@@ -47,7 +47,11 @@ class HotspotPredictor:
         start_time = time.time()
         engine = sqlalchemy.create_engine(db_url)
         
-        upsert_geodataframe_to_postgis(gdf, table_name, engine, unique_col="grid_id")
+        # DB 및 라우팅/타일 엔진에 필수적인 핵심 컬럼 3개만 격리 필터링하여 스키마 충돌 방지 및 대량 적재 최적화!
+        essential_cols = ['grid_id', 'geometry', 'trash_score']
+        essential_gdf = gdf[essential_cols].copy()
+        
+        upsert_geodataframe_to_postgis(essential_gdf, table_name, engine, unique_col="grid_id")
         
         elapsed = time.time() - start_time
         print(f"PostGIS DB 적재 완료. ({elapsed:.2f}초 소요)")
