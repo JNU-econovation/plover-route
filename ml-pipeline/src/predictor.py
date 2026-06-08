@@ -4,6 +4,7 @@ import geopandas as gpd
 import joblib
 from pathlib import Path
 import logging
+import time
 
 from src.models.pu_xgboost import PUBaggingXGBoost
 
@@ -16,42 +17,94 @@ class HotspotPredictor:
         
     def _load_model(self) -> PUBaggingXGBoost:
         if not self.model_path.exists():
-            raise FileNotFoundError(f"모델 파일을 찾을 수 없습니다: {self.model_path}")
+            raise FileNotFoundError(f"[Predictor] Model file not found: {self.model_path}")
         return joblib.load(self.model_path)
 
-    def predict(self, target_data_path: str) -> gpd.GeoDataFrame:
-        print(f"타겟 공간 데이터 로드 중... ({target_data_path})")
+    def predict_legacy(self, target_data_path: str) -> gpd.GeoDataFrame:
+        """Legacy single-prediction API for backward compatibility."""
+        print(f"[Warning] legacy predict loaded for: {target_data_path}")
         gdf: gpd.GeoDataFrame = gpd.read_file(target_data_path)
-        
-        print("trash_score 추론 중...")
-        try:
-            raw_scores: np.ndarray = self.model.predict_proba(gdf)
-        except KeyError as e:
-            print("입력 데이터에 훈련 시 사용된 피처가 누락되었습니다.")
-            raise e
-        
+        raw_scores: np.ndarray = self.model.predict_proba(gdf)
         safe_scores: np.ndarray = np.nan_to_num(raw_scores, nan=0.0)
         safe_scores = np.clip(safe_scores, 0.0, 1.0)
-        
         gdf['trash_score'] = safe_scores
-        
-        print("추론 완료. 'trash_score' 컬럼이 추가되었습니다.")
         return gdf
 
-    def push_to_db(self, gdf: gpd.GeoDataFrame, db_url: str, table_name: str = "predicted_hotspots"):
-        import sqlalchemy
-        import time
-        from src.utils import upsert_geodataframe_to_postgis
+    def is_cache_valid(self, target_data_path: str, result_path: str) -> bool:
+        """Verifies prediction cache validity by checking timestamps and row counts."""
+        import pyogrio
+        result_path_obj = Path(result_path)
+        if not result_path_obj.exists():
+            return False
+            
+        try:
+            info_feat = pyogrio.read_info(str(target_data_path))
+            info_res = pyogrio.read_info(str(result_path))
+            total_rows = info_feat['features']
+            result_rows = info_res['features']
+            
+            res_mtime = result_path_obj.stat().st_mtime
+            feat_mtime = Path(target_data_path).stat().st_mtime
+            model_mtime = self.model_path.stat().st_mtime
+            
+            is_row_matched = (result_rows == total_rows)
+            is_feat_older = (res_mtime > feat_mtime)
+            is_model_older = (res_mtime > model_mtime)
+            
+            if is_row_matched and is_feat_older and is_model_older:
+                print(f"[Predictor] Inference cache is valid and up-to-date ({result_rows:,} cells).")
+                return True
+                
+        except Exception as e:
+            print(f"[Predictor] Cache validation check failed: {e}")
+            
+        return False
+
+    def predict(self, target_data_path: str, result_path: str, force_infer: bool = False):
+        """Runs batch model prediction and saves output locally."""
+        import pyogrio
+        import gc
+
+        info = pyogrio.read_info(target_data_path)
+        total_rows = info['features']
         
-        print("PostGIS DB에 추론 결과 적재(Upsert)를 시작합니다...")
-        start_time = time.time()
-        engine = sqlalchemy.create_engine(db_url)
+        if not force_infer and self.is_cache_valid(target_data_path, result_path):
+            print("[Predictor] Skipping heavy model inference step.")
+            return
+
+        print(f"[Predictor] Starting model prediction: {Path(target_data_path).name}")
+        print(f"[Predictor] Total cells to predict: {total_rows:,}")
+
+        grid_chunk_size = 3000000
+        total_chunks = int(np.ceil(total_rows / grid_chunk_size))
         
-        # DB 및 라우팅/타일 엔진에 필수적인 핵심 컬럼 3개만 격리 필터링하여 스키마 충돌 방지 및 대량 적재 최적화!
-        essential_cols = ['grid_id', 'geometry', 'trash_score']
-        essential_gdf = gdf[essential_cols].copy()
-        
-        upsert_geodataframe_to_postgis(essential_gdf, table_name, engine, unique_col="grid_id")
-        
-        elapsed = time.time() - start_time
-        print(f"PostGIS DB 적재 완료. ({elapsed:.2f}초 소요)")
+        result_path_obj = Path(result_path)
+        if result_path_obj.exists():
+            result_path_obj.unlink()
+
+        for idx, i in enumerate(range(0, total_rows, grid_chunk_size)):
+            t_chunk = time.time()
+            start_row = i
+            end_row = min(i + grid_chunk_size, total_rows)
+            print(f"[Predictor] [Chunk {idx+1}/{total_chunks}] Running inference for cells {start_row:,} ~ {end_row:,}...")
+            
+            chunk_gdf = gpd.read_file(target_data_path, rows=slice(start_row, end_row))
+            
+            try:
+                raw_scores = self.model.predict_proba(chunk_gdf)
+            except KeyError as e:
+                print("[Predictor] Feature mismatch between training and target dataset.")
+                raise e
+            
+            safe_scores = np.nan_to_num(raw_scores, nan=0.0)
+            safe_scores = np.clip(safe_scores, 0.0, 1.0)
+            chunk_gdf['trash_score'] = safe_scores
+            
+            mode = 'w' if idx == 0 else 'a'
+            chunk_gdf.to_file(result_path, driver='GPKG', layer='predicted_hotspots', mode=mode)
+            
+            print(f"[Predictor] [Chunk {idx+1}/{total_chunks}] Chunk complete ({time.time()-t_chunk:.2f}s)")
+            del chunk_gdf
+            gc.collect()
+
+        print(f"[Predictor] Model inference complete. Output: {result_path}")
