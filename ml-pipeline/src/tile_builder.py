@@ -19,18 +19,25 @@ class TilePipelineBuilder:
             
         s3_bucket = self.bucket or os.environ.get("AWS_S3_BUCKET")
         
-        h3_gdf_res7 = aggregate_predicted_hotspots(db_url, 7)
-        h3_gdf_res9 = aggregate_predicted_hotspots(db_url, 9)
-        h3_gdf_res11 = aggregate_predicted_hotspots(db_url, 11)
-        
         _, processed_dir = get_data_dirs(self.config)
         geojson_path_res7 = processed_dir / "hotspots_res7.geojson"
         geojson_path_res9 = processed_dir / "hotspots_res9.geojson"
         geojson_path_res11 = processed_dir / "hotspots_res11.geojson"
         
-        h3_gdf_res7.to_file(geojson_path_res7, driver="GeoJSON")
-        h3_gdf_res9.to_file(geojson_path_res9, driver="GeoJSON")
-        h3_gdf_res11.to_file(geojson_path_res11, driver="GeoJSON")
+        import gc
+        from src.postprocess_h3 import aggregate_predicted_hotspots_to_geojson
+        
+        print("Compiling H3 Res 7 features (Z4-Z11)...")
+        aggregate_predicted_hotspots_to_geojson(db_url, 7, str(geojson_path_res7))
+        gc.collect()
+        
+        print("Compiling H3 Res 9 features (Z12-Z15)...")
+        aggregate_predicted_hotspots_to_geojson(db_url, 9, str(geojson_path_res9))
+        gc.collect()
+        
+        print("Compiling H3 Res 11 features (Z16-Z17)...")
+        aggregate_predicted_hotspots_to_geojson(db_url, 11, str(geojson_path_res11))
+        gc.collect()
         
         mbtiles_name = "hotspots.mbtiles"
         pmtiles_name = "hotspots.pmtiles"

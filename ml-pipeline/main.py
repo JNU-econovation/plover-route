@@ -69,25 +69,48 @@ def infer_hotspot(
     grid_size: int = typer.Option(config['spatial']['grid_size_meters'], help="격자 크기(m)"),
     buffer: int = typer.Option(config['spatial']['buffer_size_meters'], help="마스킹 확장 버퍼 반경(m)"),
     feature_type: str = typer.Option(config['pipeline']['default_feature_type'], help="추론 대상 피처 종류"),
-    push: bool = typer.Option(False, "--push", help="추론 결과를 PostGIS DB에 업로드합니다 (배포 시 필수)")
+    push: bool = typer.Option(False, "--push", help="추론 결과를 PostGIS DB에 업로드합니다 (배포 시 필수)"),
+    force_infer: bool = typer.Option(False, "--force-infer", help="기존 로컬 추론 결과 무시 및 강제 재추론 수행")
 ):
     model_paths = get_pipeline_paths(config, train_region, grid_size, buffer, config['pipeline']['default_view_type'], feature_type)
-    
     target_paths = get_pipeline_paths(config, target_region, grid_size, buffer, config['pipeline']['default_view_type'], feature_type)
     
+    db_url = os.environ.get('DATABASE_URL')
+    if push and not db_url:
+        typer.secho(".env 파일에 DATABASE_URL이 설정되지 않아 DB 업로드를 취소합니다.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+        
     predictor = HotspotPredictor(model_path=str(model_paths["model"]))
-    gdf_result = predictor.predict(target_data_path=str(target_paths["features"]))
-    
-    gdf_result.to_file(str(target_paths["result"]), driver="GPKG")
-    typer.secho(f"로컬 백업 저장 완료: {target_paths['result']}", fg=typer.colors.GREEN)
+    predictor.predict(
+        target_data_path=str(target_paths["features"]),
+        result_path=str(target_paths["result"]),
+        force_infer=force_infer
+    )
     
     if push:
-        db_url = os.environ.get('DATABASE_URL')
-        if not db_url:
-            typer.secho(".env 파일에 DATABASE_URL이 설정되지 않아 DB 업로드를 취소합니다.", fg=typer.colors.RED)
-            raise typer.Exit(code=1)
-            
-        predictor.push_to_db(gdf_result, db_url)
+        from src.db_pusher import push_gpkg_to_postgis
+        push_gpkg_to_postgis(
+            gpkg_path=str(target_paths["result"]),
+            db_url=db_url
+        )
+
+@app.command()
+def push_hotspot(
+    gpkg_path: str = typer.Option(..., "--gpkg-path", help="Path to GPKG prediction file"),
+    table_name: str = typer.Option("predicted_hotspots", "--table", help="Target database table name")
+):
+    """Directly ingests an existing GPKG prediction file into the PostGIS database."""
+    db_url = os.environ.get('DATABASE_URL')
+    if not db_url:
+        typer.secho("DATABASE_URL environment variable is not set.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+        
+    from src.db_pusher import push_gpkg_to_postgis
+    push_gpkg_to_postgis(
+        gpkg_path=gpkg_path,
+        db_url=db_url,
+        table_name=table_name
+    )
 
 @app.command()
 def visualize_hotspot(
