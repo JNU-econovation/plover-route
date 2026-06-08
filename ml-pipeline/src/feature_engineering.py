@@ -94,15 +94,25 @@ class POIFeatureExtractor(BaseFeatureExtractor):
             for r in self.BUFFER_RADII:
                 col_name = f"{cat}_count_{r}m"
                 
-                # 격자 중심점 대신 훨씬 적은 수의 POI 포인트를 버퍼링하여 대칭 sjoin 실행
-                poi_buffer = poi_subset.copy()
-                poi_buffer.geometry = poi_buffer.geometry.buffer(r)
+                # 메모리 초과(OOM) 방지를 위해 POI 데이터를 일정한 크기(chunk_size)로 분할하여 공간 매칭 실행
+                chunk_size = 100000
+                poi_counts_list = []
                 
-                # 격자 중심점(Point)이 POI 버퍼(Polygon) 내부에 들어오는지 공간 매칭
-                joined = gpd.sjoin(grid_centers, poi_buffer, predicate='within')
+                for i in range(0, len(poi_subset), chunk_size):
+                    poi_chunk = poi_subset.iloc[i : i + chunk_size].copy()
+                    # 격자 중심점 대신 적은 수의 POI 포인트를 버퍼링하여 대칭 sjoin 실행
+                    poi_chunk.geometry = poi_chunk.geometry.buffer(r)
+                    
+                    # 격자 중심점(Point)이 POI 버퍼(Polygon) 내부에 들어오는지 공간 매칭
+                    joined_chunk = gpd.sjoin(grid_centers, poi_chunk, predicate='within')
+                    
+                    if not joined_chunk.empty:
+                        counts = joined_chunk.groupby(joined_chunk.index).size()
+                        poi_counts_list.append(counts)
                 
-                if not joined.empty:
-                    poi_counts = joined.groupby(joined.index).size().rename(col_name)
+                if poi_counts_list:
+                    # 분할 매칭된 카운트를 합산하여 최종 격자 인덱스별 빈도 계산
+                    poi_counts = pd.concat(poi_counts_list).groupby(level=0).sum().rename(col_name)
                 else:
                     poi_counts = pd.Series(name=col_name, dtype=int)
                     
@@ -191,26 +201,61 @@ class FeatureOrchestrator:
                                     f"   먼저 'add-grid' 명령어를 실행하여 도화지를 생성해주세요.")
                                     
         t1 = time.time()
-        print(f"타겟 Grid 도화지 로드 중: {target_path.name}...")
-        grid_masked = gpd.read_file(target_path)
-        print(f"  -> Grid 로드 완료 (소요시간: {time.time()-t1:.2f}초), 총 격자 수: {len(grid_masked):,}")
-
+        print(f"타겟 Grid 메타데이터 로드 중: {target_path.name}...")
+        
+        # pyogrio를 사용하여 4.1GB의 파일을 메모리에 로드하지 않고 총 격자수만 메타데이터로 즉시 조회
+        import pyogrio
+        info = pyogrio.read_info(target_path)
+        total_rows = info['features']
+            
+        print(f"  -> Grid 메타데이터 조회 완료 (소요시간: {time.time()-t1:.2f}초), 총 격자 수: {total_rows:,}")
         print(f"타겟 지역: '{self.safe_region_name}'")
         print(f"  -> 해당 지역 전용 Grid와 전용 데이터(poi_{self.safe_region_name}_raw.csv)간의 결합만 허용합니다.")
-
-        feature_list = [f.strip() for f in feature_type.split(',')]
         
-        for ft in feature_list:
-            if ft not in self.extractor_map:
-                raise ValueError(f" 지원하지 않는 피처 종류입니다: '{ft}'\n"
-                                 f"   사용 가능한 피처: {list(self.extractor_map.keys())}")
-            
-            print(f"\n [{ft.upper()}] 피처 추출 파이프라인 가동 중...")
-            extractor_class = self.extractor_map[ft]
-            extractor = extractor_class(self.config, self.region, self.raw_dir)
-            grid_masked = extractor.extract(grid_masked)
-
         output_path = self.processed_dir / features_filename
-        print(f"최종 피처 레이어 누적 저장 중... -> {features_filename}")
-        grid_masked.to_file(output_path, driver='GPKG', layer='features')
+        
+        # OOM 철벽 방어 및 하드웨어 가용성 극대화: 3,000,000행 단위로 격자 분할 스트리밍 파이프라인 기동
+        grid_chunk_size = 3000000
+        import numpy as np
+        import gc
+        
+        if total_rows > grid_chunk_size:
+            total_chunks = int(np.ceil(total_rows / grid_chunk_size))
+            print(f"  -> [초대형 격자 초밀착 최적화] 총 {total_rows:,}행 격자를 {grid_chunk_size:,}행 단위로 '디스크 분할 스트리밍'합니다. (총 {total_chunks}개 청크)")
+            
+            # 기존 파일이 있다면 안전하게 삭제
+            if output_path.exists():
+                output_path.unlink()
+                
+            for idx, i in enumerate(range(0, total_rows, grid_chunk_size)):
+                t_chunk = time.time()
+                print(f"  -> [스트리밍 청크] {idx+1}/{total_chunks} 청크 ({i:,} ~ {min(i + grid_chunk_size, total_rows):,}행) 로딩 및 공간 조인 시작...")
+                
+                # fiona rows slice로 100만 칸씩만 가볍게 힙 영역으로 적재하여 메모리 90% 방출!
+                chunk_gdf = gpd.read_file(target_path, rows=slice(i, i + grid_chunk_size))
+                
+                # 이 조각 청크에 대해 지정된 모든 피처 추출기 순차 기동
+                for ft in feature_list:
+                    extractor_class = self.extractor_map[ft]
+                    extractor = extractor_class(self.config, self.region, self.raw_dir)
+                    chunk_gdf = extractor.extract(chunk_gdf)
+                    
+                # 완료된 청크 조각을 디스크에 Append 형태로 실시간 마킹!
+                # 최초 기입은 'w', 이후는 'a'
+                mode = 'w' if idx == 0 else 'a'
+                chunk_gdf.to_file(output_path, driver='GPKG', layer='features', mode=mode)
+                
+                print(f"     -> [청크 완착 완료] 소요시간: {time.time()-t_chunk:.2f}초 | 메모리 반환 중...")
+                del chunk_gdf
+                gc.collect()
+        else:
+            grid_masked = gpd.read_file(target_path)
+            for ft in feature_list:
+                extractor_class = self.extractor_map[ft]
+                extractor = extractor_class(self.config, self.region, self.raw_dir)
+                grid_masked = extractor.extract(grid_masked)
+            grid_masked.to_file(output_path, driver='GPKG', layer='features', mode='w')
+            del grid_masked
+            gc.collect()
+            
         print(f"피처 엔지니어링 텐서 저장됨 -> {output_path}")
