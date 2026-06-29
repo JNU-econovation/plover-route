@@ -10,7 +10,7 @@ spatial:
   target_region: "Dong-gu, Gwangju, South Korea"
 
 pipeline:
-  default_feature_type: "poi"
+  default_feature_type: "poi,road"
   default_view_type: "baseline"
 
 data:

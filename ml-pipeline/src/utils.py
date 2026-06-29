@@ -90,13 +90,19 @@ def upsert_geodataframe_to_postgis(gdf: gpd.GeoDataFrame, table_name: str, engin
     inspector = sqlalchemy.inspect(engine)
     if not inspector.has_table(table_name):
         print(f"본 테이블('{table_name}')이 존재하지 않아 최초 생성합니다.")
-        gdf.to_postgis(table_name, engine, if_exists="replace", index=False)
+        gdf.to_postgis(table_name, engine, if_exists="replace", index=False, chunksize=10000)
         with engine.begin() as conn:
             conn.execute(text(f'ALTER TABLE "{table_name}" ADD PRIMARY KEY ("{unique_col}");'))
     else:
-        temp_table = f"{table_name}_temp"
-        print(f"임시 테이블('{temp_table}')에 데이터 삽입 중...")
-        gdf.to_postgis(temp_table, engine, if_exists="replace", index=False)
+        import uuid
+        unique_suffix = uuid.uuid4().hex[:8]
+        temp_table = f"{table_name}_temp_{unique_suffix}"
+        print(f"임시 테이블('{temp_table}') 정리 및 준비 중...")
+        with engine.begin() as conn:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{temp_table}";'))
+            
+        print(f"임시 테이블('{temp_table}')에 데이터 삽입 중 (chunksize=10000 최적화)...")
+        gdf.to_postgis(temp_table, engine, if_exists="fail", index=False, chunksize=10000)
         
         print(f"본 테이블('{table_name}')에 Upsert 병합을 시작합니다...")
         columns = [col for col in gdf.columns if col != unique_col]
@@ -113,4 +119,4 @@ def upsert_geodataframe_to_postgis(gdf: gpd.GeoDataFrame, table_name: str, engin
         with engine.begin() as conn:
             conn.execute(upsert_sql)
             print(f"임시 테이블('{temp_table}') 정리 중...")
-            conn.execute(text(f'DROP TABLE "{temp_table}";'))
+            conn.execute(text(f'DROP TABLE IF EXISTS "{temp_table}";'))

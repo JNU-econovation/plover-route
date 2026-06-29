@@ -18,7 +18,7 @@ class ModelTrainer:
         self.config = config
 
     def _extract_features_and_target(self, gdf: gpd.GeoDataFrame) -> Tuple[pd.DataFrame, pd.Series]:
-        exclude_cols = ['is_trash', 'geometry', 'grid_id', 'index_right']
+        exclude_cols = ['is_trash', 'geometry', 'grid_id', 'index_right', 'trash_count']
         
         if 'is_trash' not in gdf.columns:
             raise ValueError("데이터셋에 정답지인 'is_trash' 컬럼이 존재하지 않습니다.")

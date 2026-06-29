@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plover Spatial GeoAI Vector Tile Viewer</title>
+    <!-- MapLibre GL JS CSS & JS -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', 'Noto Sans KR', sans-serif;
+            background-color: #0c0f1d;
+            color: #f1f3f9;
+            overflow: hidden;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Control Panel */
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(12, 15, 29, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 24px;
+            width: 320px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .control-panel h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            background: linear-gradient(135deg, #ff7b00, #ff0055);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .control-panel p {
+            font-size: 13px;
+            color: #9ea4b0;
+            line-height: 1.5;
+            margin: 0 0 20px 0;
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.08);
+            margin: 16px 0;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            margin-right: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-online {
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+        }
+
+        .status-online .status-dot {
+            background: #00ff88;
+            box-shadow: 0 0 8px #00ff88;
+        }
+
+        /* Dynamic HUD Specs */
+        .hud-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .hud-label {
+            color: #8c94a6;
+        }
+
+        .hud-value {
+            font-weight: 600;
+            color: #f1f3f9;
+        }
+
+        .lod-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .lod-coarse {
+            background: rgba(255, 153, 0, 0.15);
+            color: #ff9900;
+            border: 1px solid rgba(255, 153, 0, 0.3);
+        }
+
+        .lod-mid {
+            background: rgba(51, 204, 255, 0.15);
+            color: #33ccff;
+            border: 1px solid rgba(51, 204, 255, 0.3);
+        }
+
+        .lod-fine {
+            background: rgba(255, 51, 102, 0.15);
+            color: #ff3366;
+            border: 1px solid rgba(255, 51, 102, 0.3);
+        }
+
+        /* Custom Popup Styling */
+        .maplibregl-popup-content {
+            background: rgba(12, 15, 29, 0.9) !important;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px !important;
+            padding: 16px !important;
+            color: #f1f3f9 !important;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .maplibregl-popup-anchor-top .maplibregl-popup-tip {
+            border-bottom-color: rgba(12, 15, 29, 0.9) !important;
+        }
+
+        .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+            border-top-color: rgba(12, 15, 29, 0.9) !important;
+        }
+
+        .popup-title {
+            font-size: 11px;
+            color: #8c94a6;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .popup-score {
+            font-size: 24px;
+            font-weight: 600;
+            color: #ff3366;
+            margin-bottom: 4px;
+        }
+
+        /* Toggle Switch Styling */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 10px 14px;
+            border-radius: 10px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 22px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .3s;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #f1f3f9;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background: linear-gradient(135deg, #ff7b00, #ff0055);
+            border-color: transparent;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="control-panel">
+        <h1>GeoAI Hotspots</h1>
+        <p>경기도, 전라북도, 강원도를 포함한 전국 3,930만 칸의 GeoAI 핫스팟 데이터를 H3 대형/중형 육각형 격자와 12m 무테두리 초정밀 H3 Res 11 격자의 다단계 해상도(LOD)로
+            관측하는 프리미엄 대시보드입니다.</p>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+            <div class="connection-status status-online">
+                <span class="status-dot"></span>Martin Online
+            </div>
+        </div>
+
+        <!-- Dynamic Level of Detail HUD -->
+        <div
+            style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 10px; margin-bottom: 20px;">
+            <div class="hud-row">
+                <span class="hud-label">실시간 줌 레벨 (Zoom)</span>
+                <span class="hud-value" id="hud-zoom">11.5</span>
+            </div>
+            <div class="hud-row">
+                <span class="hud-label">공간 LOD 레벨</span>
+                <span class="lod-badge lod-coarse" id="hud-lod">Coarse Hexagon Mode</span>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Heatmap Cloud Toggle -->
+        <div class="switch-container">
+            <span style="font-size: 13px; font-weight: 600; color: #f1f3f9;">뭉게구름 모드 (Heatmap)</span>
+            <label class="switch">
+                <input type="checkbox" id="toggle-heatmap" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #f1f3f9;">쓰레기 핫스팟 오염지수</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff3366;"></div>
+            <span>심각 구역 (Trash Score &ge; 0.95)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff9900;"></div>
+            <span>경계 구역 (Trash Score 0.4 ~ 0.95)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #33ccff;"></div>
+            <span>관심 구역 (Trash Score &lt; 0.4)</span>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+            center: [127.1480, 35.8242],
+            zoom: 11.5,
+            minZoom: 8,
+            maxZoom: 18,
+            antialias: true
+        });
+
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+        map.on('zoom', () => {
+            const zoom = map.getZoom().toFixed(2);
+            document.getElementById('hud-zoom').innerText = zoom;
+
+            const lodBadge = document.getElementById('hud-lod');
+            if (zoom < 12.5) {
+                lodBadge.innerText = "Coarse Hexagon (Res 7)";
+                lodBadge.className = "lod-badge lod-coarse";
+            } else if (zoom < 16.8) {
+                lodBadge.innerText = "Fine Hexagon (Res 9)";
+                lodBadge.className = "lod-badge lod-mid";
+            } else {
+                lodBadge.innerText = "Ultra-Fine H3 Res 11 Mode";
+                lodBadge.className = "lod-badge lod-fine";
+            }
+        });
+
+        map.on('load', () => {
+            map.addSource('hotspots-source', {
+                type: 'vector',
+                tiles: ['http://54.180.111.192:3000/hotspots/{z}/{x}/{y}'],
+                minzoom: 4,
+                maxzoom: 17
+            });
+
+            // -------------------------------------------------------------
+            // [1단계] H3 Resolution 7 (Coarse) - 격자 모드 & 뭉게구름 모드
+            // -------------------------------------------------------------
+            // 육각 격자 채우기
+            map.addLayer({
+                id: 'hotspots-res7-fill',
+                type: 'fill',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res7',
+                layout: { 'visibility': 'none' }, // 기본값 비활성 (구름 모드가 체크되어 있으므로)
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, '#33ccff',
+                        0.4, '#ff9900',
+                        0.95, '#ff3366',
+                        1.0, '#ff3366'
+                    ],
+                    'fill-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.45,
+                        12.8, 0.0
+                    ]
+                }
+            });
+
+            // 육각 격자 테두리
+            map.addLayer({
+                id: 'hotspots-res7-border',
+                type: 'line',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res7',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'line-color': 'rgba(255, 255, 255, 0.15)',
+                    'line-width': 0.8,
+                    'line-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.8,
+                        12.8, 0.0
+                    ]
+                }
+            });
+
+            // 뭉게구름 (테두리 없는 반투명 블렌딩 레이어)
+            map.addLayer({
+                id: 'hotspots-res7-cloud',
+                type: 'fill',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res7',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, 'rgba(51, 204, 255, 0.0)',
+                        0.15, 'rgba(51, 204, 255, 0.05)',
+                        0.4, 'rgba(255, 153, 0, 0.18)',
+                        0.95, 'rgba(255, 51, 102, 0.35)',
+                        1.0, 'rgba(255, 51, 102, 0.35)'
+                    ],
+                    'fill-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.9,
+                        12.8, 0.0
+                    ]
+                }
+            });
+
+            // 뭉게구름 테두리 보강 (타일 경계 틈새 메우기용)
+            map.addLayer({
+                id: 'hotspots-res7-cloud-border',
+                type: 'line',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res7',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'line-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, 'rgba(51, 204, 255, 0.0)',
+                        0.15, 'rgba(51, 204, 255, 0.05)',
+                        0.4, 'rgba(255, 153, 0, 0.18)',
+                        0.95, 'rgba(255, 51, 102, 0.35)',
+                        1.0, 'rgba(255, 51, 102, 0.35)'
+                    ],
+                    'line-width': 1.5,
+                    'line-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.9,
+                        12.8, 0.0
+                    ]
+                }
+            });
+
+            // -------------------------------------------------------------
+            // [2단계] H3 Resolution 9 (Fine) - 격자 모드 & 뭉게구름 모드
+            // -------------------------------------------------------------
+            // 육각 격자 채우기
+            map.addLayer({
+                id: 'hotspots-res9-fill',
+                type: 'fill',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res9',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, '#33ccff',
+                        0.4, '#ff9900',
+                        0.95, '#ff3366',
+                        1.0, '#ff3366'
+                    ],
+                    'fill-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.0,
+                        12.8, 0.60,
+                        16.5, 0.60,
+                        17.2, 0.0
+                    ]
+                }
+            });
+
+            // 육각 격자 테두리
+            map.addLayer({
+                id: 'hotspots-res9-border',
+                type: 'line',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res9',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'line-color': 'rgba(255, 255, 255, 0.25)',
+                    'line-width': 1.0,
+                    'line-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.0,
+                        12.8, 0.8,
+                        16.5, 0.8,
+                        17.2, 0.0
+                    ]
+                }
+            });
+
+            // 뭉게구름 (테두리 없는 반투명 블렌딩 레이어)
+            map.addLayer({
+                id: 'hotspots-res9-cloud',
+                type: 'fill',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res9',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, 'rgba(51, 204, 255, 0.0)',
+                        0.15, 'rgba(51, 204, 255, 0.05)',
+                        0.4, 'rgba(255, 153, 0, 0.18)',
+                        0.95, 'rgba(255, 51, 102, 0.35)',
+                        1.0, 'rgba(255, 51, 102, 0.35)'
+                    ],
+                    'fill-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.0,
+                        12.8, 0.9,
+                        16.5, 0.9,
+                        17.2, 0.0
+                    ]
+                }
+            });
+
+            // 뭉게구름 테두리 보강 (타일 경계 틈새 메우기용)
+            map.addLayer({
+                id: 'hotspots-res9-cloud-border',
+                type: 'line',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res9',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'line-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, 'rgba(51, 204, 255, 0.0)',
+                        0.15, 'rgba(51, 204, 255, 0.05)',
+                        0.4, 'rgba(255, 153, 0, 0.18)',
+                        0.95, 'rgba(255, 51, 102, 0.35)',
+                        1.0, 'rgba(255, 51, 102, 0.35)'
+                    ],
+                    'line-width': 1.5,
+                    'line-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        12.0, 0.0,
+                        12.8, 0.9,
+                        16.5, 0.9,
+                        17.2, 0.0
+                    ]
+                }
+            });
+
+            // -------------------------------------------------------------
+            // [3단계] H3 Resolution 11 (Ultra-Fine) - 격자 모드 & 뭉게구름 모드
+            // -------------------------------------------------------------
+            // 육각 격자 채우기
+            map.addLayer({
+                id: 'hotspots-res11-fill',
+                type: 'fill',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res11',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, '#33ccff',
+                        0.4, '#ff9900',
+                        0.95, '#ff3366',
+                        1.0, '#ff3366'
+                    ],
+                    'fill-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        16.5, 0.0,
+                        17.2, 0.55
+                    ]
+                }
+            });
+
+            // 육각 격자 테두리
+            map.addLayer({
+                id: 'hotspots-res11-border',
+                type: 'line',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res11',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'line-color': 'rgba(255, 255, 255, 0.0)',
+                    'line-width': 0.0,
+                    'line-opacity': 0.0
+                }
+            });
+
+            // 뭉게구름 (테두리 없는 반투명 블렌딩 레이어)
+            map.addLayer({
+                id: 'hotspots-res11-cloud',
+                type: 'fill',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res11',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, 'rgba(51, 204, 255, 0.0)',
+                        0.15, 'rgba(51, 204, 255, 0.05)',
+                        0.4, 'rgba(255, 153, 0, 0.18)',
+                        0.95, 'rgba(255, 51, 102, 0.35)',
+                        1.0, 'rgba(255, 51, 102, 0.35)'
+                    ],
+                    'fill-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        16.5, 0.0,
+                        17.2, 0.9
+                    ]
+                }
+            });
+
+            // 뭉게구름 테두리 보강 (타일 경계 틈새 메우기용)
+            map.addLayer({
+                id: 'hotspots-res11-cloud-border',
+                type: 'line',
+                source: 'hotspots-source',
+                'source-layer': 'hotspots_res11',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'line-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'trash_score_avg'], 0.0],
+                        0.0, 'rgba(51, 204, 255, 0.0)',
+                        0.15, 'rgba(51, 204, 255, 0.05)',
+                        0.4, 'rgba(255, 153, 0, 0.18)',
+                        0.95, 'rgba(255, 51, 102, 0.35)',
+                        1.0, 'rgba(255, 51, 102, 0.35)'
+                    ],
+                    'line-width': 1.5,
+                    'line-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        16.5, 0.0,
+                        17.2, 0.9
+                    ]
+                }
+            });
+
+            // -------------------------------------------------------------
+            // 마우스 호버 다이내믹 팝업 컨트롤러
+            // -------------------------------------------------------------
+            const popup = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false
+            });
+
+            function handleHover(e, title) {
+                map.getCanvas().style.cursor = 'pointer';
+
+                if (e.features.length > 0) {
+                    const feature = e.features[0];
+                    const score = parseFloat(feature.properties.trash_score_avg).toFixed(3);
+                    const maxScore = parseFloat(feature.properties.trash_score_max).toFixed(3);
+                    const count = feature.properties.cell_count;
+                    const html = `
+                        <div class="popup-title">${title} Summary</div>
+                        <div class="popup-score">${score}</div>
+                        <div style="font-size: 11px; color: #9ea4b0; margin-bottom: 4px;">
+                            최대 점수: <strong>${maxScore}</strong>
+                        </div>
+                        <div style="font-size: 11px; color: #727985;">
+                            집계 격자 수: <strong>${count}</strong> 개
+                        </div>
+                    `;
+
+                    popup.setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                }
+            }
+
+            function handleLeave() {
+                map.getCanvas().style.cursor = '';
+                popup.remove();
+            }
+
+            // 호버 이벤트 등록 (구름 및 채우기 레이어 모두 연동)
+            const activeLayers = [
+                'hotspots-res7-fill', 'hotspots-res7-cloud',
+                'hotspots-res9-fill', 'hotspots-res9-cloud',
+                'hotspots-res11-fill', 'hotspots-res11-cloud'
+            ];
+            activeLayers.forEach(lId => {
+                const titleText = lId.includes('res7') ? 'H3 Res 7 (Coarse)' :
+                                  lId.includes('res9') ? 'H3 Res 9 (Fine)' : 'H3 Res 11 (Ultra-Fine)';
+                map.on('mousemove', lId, (e) => handleHover(e, titleText));
+                map.on('mouseleave', lId, handleLeave);
+            });
+
+            // -------------------------------------------------------------
+            // 토글 이벤트 처리기 (격자 ↔ 뭉게구름 전환)
+            // -------------------------------------------------------------
+            document.getElementById('toggle-heatmap').addEventListener('change', (e) => {
+                const showCloud = e.target.checked;
+                
+                const cloudLayers = [
+                    'hotspots-res7-cloud', 'hotspots-res7-cloud-border',
+                    'hotspots-res9-cloud', 'hotspots-res9-cloud-border',
+                    'hotspots-res11-cloud', 'hotspots-res11-cloud-border'
+                ];
+                const gridLayers = [
+                    'hotspots-res7-fill', 'hotspots-res7-border',
+                    'hotspots-res9-fill', 'hotspots-res9-border',
+                    'hotspots-res11-fill', 'hotspots-res11-border'
+                ];
+
+                cloudLayers.forEach(id => {
+                    map.setLayoutProperty(id, 'visibility', showCloud ? 'visible' : 'none');
+                });
+                gridLayers.forEach(id => {
+                    map.setLayoutProperty(id, 'visibility', showCloud ? 'none' : 'visible');
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>

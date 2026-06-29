@@ -85,8 +85,24 @@ class DatasetBuilder:
 
         print("공간 조인을 통한 정답 라벨(Y) 맵핑 시작...")
         labels_gdf = ensure_crs(labels_gdf, grid_features.crs)
+        
+        # Preserve the actual frequency (count) of trash reports inside each grid cell
+        print(" -> [정보 보존] 각 격자 공간 내 실제 쓰레기 발생 빈도(trash_count) 집계 중...")
+        if not labels_gdf.empty:
+            count_join = gpd.sjoin(grid_features, labels_gdf, how='inner', predicate='contains')
+            trash_counts = count_join.groupby(count_join.index).size().rename("trash_count")
+            grid_features = grid_features.join(trash_counts, how='left')
+            grid_features['trash_count'] = grid_features['trash_count'].fillna(0).astype(int)
+        else:
+            grid_features['trash_count'] = 0
             
-        merged_gdf = gpd.sjoin(grid_features, labels_gdf, how='left', predicate='contains')
+        # Apply spatial smoothing buffer to mitigate GPS errors and grid boundary alignment issues
+        smoothing_radius = float(self.grid_size)
+        print(f" -> [공간 스무딩] GPS 수신 오차 흡수 및 경계선 왜곡 극복을 위해 쓰레기 지점 주변 {smoothing_radius}m 버퍼 스무딩 적용 중...")
+        smoothed_labels = labels_gdf.copy()
+        smoothed_labels.geometry = smoothed_labels.geometry.buffer(smoothing_radius)
+        
+        merged_gdf = gpd.sjoin(grid_features, smoothed_labels, how='left', predicate='intersects')
         
         merged_gdf = merged_gdf[~merged_gdf.index.duplicated(keep='first')]
         merged_gdf['is_trash'] = merged_gdf['is_trash'].fillna(0).astype(int)
@@ -97,7 +113,7 @@ class DatasetBuilder:
         trash_count = merged_gdf['is_trash'].sum()
         total_count = len(merged_gdf)
         ratio = (trash_count / total_count) * 100
-        print(f"쓰레기 투기 위험 구역 격자 수: {trash_count:,}개")
+        print(f"쓰레기 투기 위험 구역 격자 수 (스무딩 적용): {trash_count:,}개")
         print(f"안전 구역 격자 수: {total_count - trash_count:,}개")
         print(f"클래스 불균형 비율: {ratio:.4f}%")
 
