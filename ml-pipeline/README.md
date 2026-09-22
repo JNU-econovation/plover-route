@@ -1,5 +1,7 @@
 # GeoAI Plogging ML Pipeline & Architecture
 
+[프로젝트 전체 소개](../README.md) · [환경변수·데이터 준비·실행 가이드](../docs/SETUP.md)
+
 본 저장소는 공간 데이터(OSM, POI)와 쓰레기 무단투기 정답지(Ground Truth)를 활용하여, 지역 전체의 쓰레기 핫스팟(투기 위험도)을 예측하고 시각화하는 머신러닝 파이프라인(PU-Learning 기반)입니다.
 
 이 프로젝트는 동구라미 API 등에서 수집한 라벨링 데이터를 바탕으로 국지적 지역(예: 동구)에서 모델을 학습시키고, 라벨이 없는 광역 지역(예: 광주 전체)으로 핫스팟 예측을 확장하는 공간 전이 학습(Spatial Transfer Learning)을 지원합니다.
@@ -47,28 +49,30 @@ DATABASE_URL=postgresql://[아이디]:[비밀번호]@[호스트주소]:5432/[DB�
 
 **명령어 도움말 확인:**
 ```bash
-docker compose run --rm ml-pipeline uv run main.py --help
+docker compose run --rm ml-pipeline python main.py --help
 ```
 
 **파이프라인 단계별 도커 실행 예시:**
 로컬 환경의 CLI 명령어를 `docker compose run --rm ml-pipeline` 컨텍스트에서 동일하게 실행합니다.
 ```bash
 # 데이터 수집 (ETL)
-docker compose run --rm ml-pipeline uv run main.py fetch-raw-data
+docker compose run --rm ml-pipeline python main.py fetch-raw-data
 
 # 공간 격자망 생성
-docker compose run --rm ml-pipeline uv run main.py add-grid --region "Dong-gu, Gwangju, South Korea"
+docker compose run --rm ml-pipeline python main.py add-grid --region "Dong-gu, Gwangju, South Korea"
 
 # 모델 학습
-docker compose run --rm ml-pipeline uv run main.py train-model --region "Dong-gu, Gwangju, South Korea"
+docker compose run --rm ml-pipeline python main.py train-model --region "Dong-gu, Gwangju, South Korea"
 ```
-*(결과물인 `.pkl` 모델 파일 및 `.gpkg` 데이터는 도커 볼륨 마운트를 통해 호스트의 `ml-pipeline/data/` 디렉토리에 보존됩니다.)*
+최종 실행 이미지에는 `uv`가 포함되지 않으므로 `python`을 사용합니다. 결과물은 컨테이너의 `/app/data/`에 저장됩니다. 호스트에 보존하려면 Compose의 `./data:/data`를 `./data:/app/data`로 맞춰야 합니다. 위 명령은 개별 단계의 호출 예시이며, 데이터 준비부터 학습까지의 순서는 아래 시나리오를 따릅니다.
 
 ---
 
 ## 4. CLI 파이프라인 시나리오 (공간 전이 학습)
 
 아래는 광주 동구(학습 지역)의 데이터를 기반으로 모델을 학습시키고, 광주 전체(타겟 지역)의 쓰레기 투기 위험도를 예측하는 전체 파이프라인 실행 시나리오입니다. 실제 서버 환경에서 실행할 땐 도커 컴포즈 명령어를 사용하면 됩니다. (2번 참고)
+
+시작 전에 학습·추론 대상 지역의 POI CSV를 `data/raw/`에 준비해야 합니다. 파일명과 필요한 열은 [실행 가이드](../docs/SETUP.md#환경변수와-원본-데이터)를 참고하세요. `fetch-raw-data`는 POI가 아닌 쓰레기 제보 데이터를 수집합니다.
 
 ### Step 1: 데이터 수집 (ETL)
 외부 API에서 쓰레기 신고 데이터를 수집하여 PostGIS 데이터베이스에 적재합니다.
